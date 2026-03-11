@@ -4,10 +4,10 @@ export async function POST(req: Request) {
   try {
     const { text, targetLanguage } = await req.json();
 
-    // 1. Traduction via Gemini 1.5 Flash (Modèle stable et ultra-rapide)
+    // 1. Traduction via Gemini 1.5 Flash (API v1beta avec la bonne syntaxe)
     const prompt = `Traduire le texte suivant en ${targetLanguage} en gardant un ton naturel et fluide : "${text}"`;
     
-    // CORRECTION ICI : Utilisation de gemini-1.5-flash
+    // CORRECTION : L'URL exacte pour Google AI Studio
     const geminiResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -18,8 +18,10 @@ export async function POST(req: Request) {
 
     const geminiData = await geminiResp.json();
     
-    if (!geminiData.candidates) {
-       throw new Error("Erreur Gemini: " + JSON.stringify(geminiData));
+    // Si Gemini renvoie une erreur (clé invalide, modèle introuvable, etc.)
+    if (!geminiData.candidates || geminiData.error) {
+       console.error("Réponse API Gemini:", geminiData);
+       throw new Error("Erreur API Gemini: " + (geminiData.error?.message || JSON.stringify(geminiData)));
     }
     
     const translatedText = geminiData.candidates[0].content.parts[0].text;
@@ -37,6 +39,11 @@ export async function POST(req: Request) {
         voice_settings: { stability: 0.5, similarity_boost: 0.8 }
       })
     });
+
+    if (!ttsResp.ok) {
+        const errText = await ttsResp.text();
+        throw new Error(`Erreur ElevenLabs: ${ttsResp.status} - ${errText}`);
+    }
 
     const audioBuffer = await ttsResp.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
