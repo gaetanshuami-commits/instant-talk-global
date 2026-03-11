@@ -4,10 +4,11 @@ export async function POST(req: Request) {
   try {
     const { text, targetLanguage } = await req.json();
 
-    // 1. Traduction via Gemini 2.0 Flash
+    // 1. Traduction via Gemini 1.5 Flash (Modèle stable et ultra-rapide)
     const prompt = `Traduire le texte suivant en ${targetLanguage} en gardant un ton naturel et fluide : "${text}"`;
     
-    const geminiResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    // CORRECTION ICI : Utilisation de gemini-1.5-flash
+    const geminiResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
