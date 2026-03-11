@@ -1,4 +1,4 @@
-ï»¿import React from 'react';
+import React from 'react';
 
 const plans = [
   {
@@ -7,8 +7,8 @@ const plans = [
     trial: "3 jours gratuits",
     description: "Communication multilingue pour particuliers.",
     features: [
-      "Utilisation illimitÃ©e",
-      "Jusqu'Ã  5 participants",
+      "Utilisation illimitée",
+      "Jusqu'à 5 participants",
       "10 langues disponibles",
       "Sous-titres & Transcription"
     ],
@@ -18,26 +18,26 @@ const plans = [
     name: "Business",
     price: "99",
     trial: "3 jours gratuits",
-    description: "Solution idÃ©ale pour les Ã©quipes.",
+    description: "Solution idéale pour les équipes.",
     features: [
-      "Jusqu'Ã  25 utilisateurs",
-      "50 participants par rÃ©union",
+      "Jusqu'à 25 utilisateurs",
+      "50 participants par réunion",
       "20 langues disponibles",
       "Support prioritaire",
-      "Gestion centralisÃ©e"
+      "Gestion centralisée"
     ],
-    priceId: "price_BUSINESS_ID"
+    priceId: "price_1T9oXtEwh4sBnj54YgPSDbeU"
   },
   {
     name: "Enterprise",
     price: "Custom",
     trial: "Sur mesure",
-    description: "Pour les institutions stratÃ©giques (B2G).",
+    description: "Pour les institutions stratégiques (B2G).",
     features: [
-      "Langues illimitÃ©es",
-      "SLA personnalisÃ©",
-      "DÃ©ploiement privÃ© (On-premise)",
-      "Formation et support dÃ©diÃ©s"
+      "Langues illimitées",
+      "SLA personnalisé",
+      "Déploiement privé (On-premise)",
+      "Formation et support dédiés"
     ],
     priceId: null
   }
@@ -65,13 +65,13 @@ export default function PricingSection() {
               <h3 className="text-2xl font-bold">{plan.name}</h3>
               <p className="text-blue-600 font-medium text-sm mb-4 uppercase tracking-wide">{plan.trial}</p>
               <div className="text-4xl font-bold mb-6">
-                {plan.price !== "Custom" ? plan.price + "â‚¬" : "Sur mesure"}
+                {plan.price !== "Custom" ? plan.price + "€" : "Sur mesure"}
                 {plan.price !== "Custom" && <span className="text-lg text-gray-400 font-normal">/mois</span>}
               </div>
               <ul className="mb-8 space-y-3 min-h-[180px]">
                 {plan.features.map(f => (
                   <li key={f} className="text-sm text-gray-600 flex items-start">
-                    <span className="mr-2 text-green-500">âœ“</span> {f}
+                    <span className="mr-2 text-green-500">?</span> {f}
                   </li>
                 ))}
               </ul>
