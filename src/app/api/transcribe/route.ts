@@ -11,11 +11,11 @@ export async function POST(req: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // On envoie l'audio à Deepgram (modèle Nova-2, configuré pour écouter du Français)
+    // On envoie l'audio à Deepgram
     const response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=fr', {
       method: 'POST',
       headers: {
-        'Authorization': Token ,
+        'Authorization': `Token ${process.env.DEEPGRAM_API_KEY}`,
         'Content-Type': file.type || 'audio/webm',
       },
       body: buffer,
@@ -27,7 +27,6 @@ export async function POST(req: Request) {
       throw new Error(data.error);
     }
 
-    // On extrait le texte compris par Deepgram
     const transcript = data.results?.channels[0]?.alternatives[0]?.transcript || "";
 
     return NextResponse.json({ transcript });
