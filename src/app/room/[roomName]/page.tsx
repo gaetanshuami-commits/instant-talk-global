@@ -15,11 +15,11 @@ export default function RoomPage({ params }: { params: { roomName: string } }) {
     audioManager.current = new AudioQueueManager();
     (async () => {
       try {
-        const resp = await fetch(`/api/livekit?room=${roomName}&username=User_${Math.floor(Math.random() * 100)}`);
+        const resp = await fetch(`/api/livekit?room=${roomName}&username=User_${Math.floor(Math.random() * 1000)}`);
         const data = await resp.json();
         if (data.token) setToken(data.token);
       } catch (e) {
-        alert("Erreur de connexion au serveur de tokens.");
+        alert("Erreur serveur : Impossible de récupérer le ticket d'entrée.");
       }
     })();
   }, [roomName]);
@@ -38,22 +38,14 @@ export default function RoomPage({ params }: { params: { roomName: string } }) {
         audioManager.current?.addAudio(data.audio);
         alert("✅ L'IA a répondu ! Écoute tes haut-parleurs.");
       } else {
-        alert("❌ Erreur IA : " + (data.error || "Clé API Gemini ou ElevenLabs manquante."));
+        alert("❌ Erreur IA : " + (data.error || "Problème inconnu."));
       }
     } catch (error) {
       alert("❌ Erreur de réseau vers le serveur IA.");
     }
   };
 
-  if (token === "") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-900 font-sans">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-lg font-medium">Création de la salle sécurisée...</p>
-      </div>
-    );
-  }
-
+  // STRUCTURE STABLE : L'écran blanc ne pourra plus jamais apparaître.
   return (
     <div className="flex flex-col h-screen bg-gray-100 font-sans">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shadow-sm z-10">
@@ -66,18 +58,26 @@ export default function RoomPage({ params }: { params: { roomName: string } }) {
         </div>
       </header>
 
-      <main className="flex-1 relative bg-gray-900 shadow-inner overflow-hidden" data-lk-theme="default">
-        <LiveKitRoom
-          video={true} 
-          audio={true} 
-          token={token}
-          serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-          options={{ videoCaptureDefaults: { resolution: VideoPresets.h1080.resolution } }}
-          className="h-full w-full"
-        >
-          <VideoConference />
-          <RoomAudioRenderer />
-        </LiveKitRoom>
+      <main className="flex-1 relative bg-gray-900 shadow-inner overflow-hidden flex items-center justify-center">
+        {!token ? (
+          <div className="text-white flex flex-col items-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+            <p className="text-lg">Connexion sécurisée en cours...</p>
+          </div>
+        ) : (
+          <LiveKitRoom
+            video={true} 
+            audio={true} 
+            token={token}
+            serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+            options={{ videoCaptureDefaults: { resolution: VideoPresets.h1080.resolution } }}
+            className="h-full w-full"
+            data-lk-theme="default"
+          >
+            <VideoConference />
+            <RoomAudioRenderer />
+          </LiveKitRoom>
+        )}
       </main>
 
       <div className="bg-white border-t border-gray-200 p-4 flex justify-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
@@ -85,6 +85,7 @@ export default function RoomPage({ params }: { params: { roomName: string } }) {
           onClick={() => testTranslation("Bonjour, je suis ravi de tester mon nouveau système de traduction instantanée.")}
           className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform transform hover:scale-105 flex items-center gap-2"
         >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
           Tester la traduction vocale (IA)
         </button>
       </div>
