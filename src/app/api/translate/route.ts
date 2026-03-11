@@ -3,12 +3,33 @@
 export async function POST(req: Request) {
   try {
     const { text, targetLanguage } = await req.json();
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    // 1. Traduction via Gemini 1.5 Flash (API v1beta avec la bonne syntaxe)
+    // 1. LE SCAN : On demande à Google la liste exacte des modèles que TA clé a le droit d'utiliser
+    const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const listData = await listResp.json();
+
+    if (listData.error) {
+        throw new Error("Clé API Google invalide : " + listData.error.message);
+    }
+
+    // 2. LA SÉLECTION AUTOMATIQUE : On cherche le premier modèle "flash" ou "pro" capable de générer du texte
+    const availableModels = listData.models || [];
+    const validModel = availableModels.find((m: any) => 
+        m.supportedGenerationMethods.includes("generateContent") && 
+        (m.name.includes("flash") || m.name.includes("pro"))
+    );
+
+    if (!validModel) {
+        throw new Error("Aucun modèle IA compatible trouvé sur ton compte Google.");
+    }
+
+    const modelToUse = validModel.name; // Google va nous donner automatiquement le bon nom (ex: models/gemini-3.0-flash)
+
+    // 3. LA TRADUCTION avec le modèle parfait
     const prompt = `Traduire le texte suivant en ${targetLanguage} en gardant un ton naturel et fluide : "${text}"`;
     
-    // CORRECTION : L'URL exacte pour Google AI Studio
-    const geminiResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    const geminiResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/${modelToUse}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -18,15 +39,13 @@ export async function POST(req: Request) {
 
     const geminiData = await geminiResp.json();
     
-    // Si Gemini renvoie une erreur (clé invalide, modèle introuvable, etc.)
-    if (!geminiData.candidates || geminiData.error) {
-       console.error("Réponse API Gemini:", geminiData);
-       throw new Error("Erreur API Gemini: " + (geminiData.error?.message || JSON.stringify(geminiData)));
+    if (geminiData.error) {
+       throw new Error("Erreur Gemini pendant la traduction : " + geminiData.error.message);
     }
     
     const translatedText = geminiData.candidates[0].content.parts[0].text;
 
-    // 2. TTS via ElevenLabs (Clonage vocal)
+    // 4. LA VOIX via ElevenLabs
     const ttsResp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`, {
       method: 'POST',
       headers: { 
@@ -48,7 +67,7 @@ export async function POST(req: Request) {
     const audioBuffer = await ttsResp.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
 
-    return NextResponse.json({ translatedText, audio: base64Audio });
+    return NextResponse.json({ translatedText, audio: base64Audio, usedModel: modelToUse });
   } catch (error: any) {
     console.error("Erreur Pipeline:", error);
     return NextResponse.json({ error: error.message || "Erreur pipeline IA" }, { status: 500 });
