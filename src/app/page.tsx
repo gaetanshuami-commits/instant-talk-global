@@ -2,20 +2,19 @@
 
 import { useState, useRef } from 'react';
 import '@livekit/components-styles';
-// Si tu as LiveKit de branché, tu pourras l'ajouter ici.
 
 const SUPPORTED_LANGUAGES = [
   { code: 'en', name: '🇬🇧 Anglais' },
-  { code: 'es', name: '🇪🇸 Espagnol' },
-  { code: 'de', name: '🇩🇪 Allemand' },
-  { code: 'it', name: '🇮🇹 Italien' },
-  { code: 'pt', name: '🇵🇹 Portugais' },
   { code: 'ja', name: '🇯🇵 Japonais' },
   { code: 'zh', name: '🇨🇳 Chinois' },
-  { code: 'ar', name: '🇸🇦 Arabe' },
-  { code: 'ru', name: '🇷🇺 Russe' },
-  { code: 'hi', name: '🇮🇳 Hindi' },
+  { code: 'de', name: '🇩🇪 Allemand' },
+  { code: 'nl', name: '🇳🇱 Néerlandais' },
+  { code: 'fr', name: '🇫🇷 Français' },
   { code: 'ko', name: '🇰🇷 Coréen' },
+  { code: 'pt', name: '🇵🇹 Portugais' },
+  { code: 'it', name: '🇮🇹 Italien' },
+  { code: 'es', name: '🇪🇸 Espagnol' },
+  { code: 'ar', name: '🇸🇦 Arabe' },
 ];
 
 export default function Home() {
@@ -69,7 +68,6 @@ export default function Home() {
       const dgData = await dgRes.json();
       if (!dgData.transcript) throw new Error("Je n'ai pas bien entendu.");
 
-      // On envoie la langue sélectionnée par l'utilisateur !
       const trRes = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,14 +91,14 @@ export default function Home() {
   return (
     <main className="flex flex-col h-screen bg-[#0a0a0a] text-white relative font-sans">
       
-      {/* HEADER PREMIUM (Glassmorphism) */}
+      {/* HEADER PREMIUM */}
       <div className="absolute top-0 w-full z-20 flex justify-between items-center px-8 py-4 bg-white/5 backdrop-blur-lg border-b border-white/10">
         <h1 className="text-xl font-semibold tracking-wide flex items-center gap-3">
           <span className="w-2.5 h-2.5 bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.8)] animate-pulse"></span>
           Instant Talk <span className="text-blue-500 font-bold">Global</span>
         </h1>
         
-        {/* LE SÉLECTEUR DE LANGUE DISCRET ET MODERNE */}
+        {/* LE SÉLECTEUR DE LANGUES PERSONNALISÉ */}
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-400">Traduire en :</span>
           <select 
@@ -117,9 +115,8 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ZONE CENTRALE (Vidéo LiveKit) */}
+      {/* ZONE CENTRALE (Vidéo) */}
       <div className="flex-1 flex items-center justify-center overflow-hidden relative">
-        {/* Un effet de fond stylé en attendant la vidéo HD */}
         <div className="absolute w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
         <p className="text-gray-500/50 text-lg z-10">Caméra HD en attente de connexion...</p>
         
