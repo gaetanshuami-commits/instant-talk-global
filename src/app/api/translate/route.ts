@@ -1,75 +1,58 @@
 ﻿import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(req: Request) {
   try {
     const { text, targetLanguage } = await req.json();
+
+    // 1. INITIALISATION DE GEMINI
     const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Clé Gemini manquante");
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // 1. LE SCAN : On demande à Google la liste exacte des modèles que TA clé a le droit d'utiliser
-    const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    const listData = await listResp.json();
-
-    if (listData.error) {
-        throw new Error("Clé API Google invalide : " + listData.error.message);
-    }
-
-    // 2. LA SÉLECTION AUTOMATIQUE : On cherche le premier modèle "flash" ou "pro" capable de générer du texte
-    const availableModels = listData.models || [];
-    const validModel = availableModels.find((m: any) => 
-        m.supportedGenerationMethods.includes("generateContent") && 
-        (m.name.includes("flash") || m.name.includes("pro"))
-    );
-
-    if (!validModel) {
-        throw new Error("Aucun modèle IA compatible trouvé sur ton compte Google.");
-    }
-
-    const modelToUse = validModel.name; // Google va nous donner automatiquement le bon nom (ex: models/gemini-3.0-flash)
-
-    // 3. LA TRADUCTION avec le modèle parfait
-    const prompt = `Traduire le texte suivant en ${targetLanguage} en gardant un ton naturel et fluide : "${text}"`;
+    // 2. LE PROMPT STRICT (Le secret pour empêcher l'IA de discuter)
+    const prompt = `Tu es un traducteur instantané ultra-précis. 
+    Ta seule mission est de traduire le texte suivant en langue: ${targetLanguage}. 
+    REGLE ABSOLUE: Ne rajoute AUCUNE explication, AUCUN commentaire, AUCUNE ponctuation inutile. Ne réponds pas à la question, traduis-la uniquement.
     
-    const geminiResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/${modelToUse}:generateContent?key=${apiKey}`, {
+    Texte à traduire : "${text}"`;
+
+    const result = await model.generateContent(prompt);
+    const translatedText = result.response.text().trim();
+
+    // 3. SYNTHÈSE VOCALE ELEVENLABS (Avec ta voix)
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || "QaWvcRVDzoGrTmTauQpi";
+    const elApiKey = process.env.ELEVENLABS_API_KEY;
+    
+    if (!elApiKey) throw new Error("Clé ElevenLabs manquante");
+
+    const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        contents: [{ parts: [{ text: prompt }] }] 
-      })
-    });
-
-    const geminiData = await geminiResp.json();
-    
-    if (geminiData.error) {
-       throw new Error("Erreur Gemini pendant la traduction : " + geminiData.error.message);
-    }
-    
-    const translatedText = geminiData.candidates[0].content.parts[0].text;
-
-    // 4. LA VOIX via ElevenLabs
-    const ttsResp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`, {
-      method: 'POST',
-      headers: { 
-        'xi-api-key': process.env.ELEVENLABS_API_KEY || '',
-        'Content-Type': 'application/json' 
+      headers: {
+        'Accept': 'audio/mpeg',
+        'xi-api-key': elApiKey,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         text: translatedText,
         model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.8 }
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75
+        }
       })
     });
 
-    if (!ttsResp.ok) {
-        const errText = await ttsResp.text();
-        throw new Error(`Erreur ElevenLabs: ${ttsResp.status} - ${errText}`);
-    }
+    if (!elevenRes.ok) throw new Error("Erreur ElevenLabs");
 
-    const audioBuffer = await ttsResp.arrayBuffer();
+    const audioBuffer = await elevenRes.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
 
-    return NextResponse.json({ translatedText, audio: base64Audio, usedModel: modelToUse });
+    return NextResponse.json({ audio: base64Audio, translation: translatedText });
+
   } catch (error: any) {
-    console.error("Erreur Pipeline:", error);
-    return NextResponse.json({ error: error.message || "Erreur pipeline IA" }, { status: 500 });
+    console.error("Erreur API Translate:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
