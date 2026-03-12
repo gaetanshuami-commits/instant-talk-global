@@ -5,28 +5,27 @@ export async function POST(req: Request) {
   try {
     const { text, targetLanguage } = await req.json();
 
-    // 1. INITIALISATION DE GEMINI
+    // 1. GEMINI STRICT : Plus de discussion, que de la traduction
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Clé Gemini manquante");
+    if (!apiKey) throw new Error("Clé GEMINI_API_KEY manquante");
+    
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // 2. LE PROMPT STRICT (Le secret pour empêcher l'IA de discuter)
-    const prompt = `Tu es un traducteur instantané ultra-précis. 
-    Ta seule mission est de traduire le texte suivant en langue: ${targetLanguage}. 
-    REGLE ABSOLUE: Ne rajoute AUCUNE explication, AUCUN commentaire, AUCUNE ponctuation inutile. Ne réponds pas à la question, traduis-la uniquement.
-    
-    Texte à traduire : "${text}"`;
+    const prompt = `Tu es un simple algorithme de traduction automatique.
+    Traduis exactement ce texte vers la langue : ${targetLanguage}.
+    RÈGLE ABSOLUE : Renvoie UNIQUEMENT la traduction. Aucun commentaire, aucun mot en plus.
+    Texte : "${text}"`;
 
     const result = await model.generateContent(prompt);
     const translatedText = result.response.text().trim();
 
-    // 3. SYNTHÈSE VOCALE ELEVENLABS (Avec ta voix)
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || "QaWvcRVDzoGrTmTauQpi";
+    // 2. ELEVENLABS STRICT
     const elApiKey = process.env.ELEVENLABS_API_KEY;
-    
-    if (!elApiKey) throw new Error("Clé ElevenLabs manquante");
+    if (!elApiKey) throw new Error("Clé ELEVENLABS_API_KEY manquante");
 
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || "QaWvcRVDzoGrTmTauQpi";
+    
     const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: {
@@ -36,23 +35,21 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         text: translatedText,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
+        model_id: "eleven_multilingual_v2"
       })
     });
 
-    if (!elevenRes.ok) throw new Error("Erreur ElevenLabs");
+    if (!elevenRes.ok) {
+      const errData = await elevenRes.text();
+      throw new Error(`Refus ElevenLabs : ${errData}`);
+    }
 
     const audioBuffer = await elevenRes.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
 
     return NextResponse.json({ audio: base64Audio, translation: translatedText });
-
   } catch (error: any) {
-    console.error("Erreur API Translate:", error);
+    console.error("Erreur Backend Translate:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
