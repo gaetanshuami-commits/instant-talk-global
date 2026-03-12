@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   LiveKitRoom,
   GridLayout,
@@ -9,6 +9,7 @@ import {
   ControlBar,
   useTracks,
 } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import '@livekit/components-styles';
 
 const SUPPORTED_LANGUAGES = [
@@ -42,7 +43,7 @@ export default function Home() {
     return (
       <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white items-center justify-center p-4">
         <div className="z-20 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl text-center max-w-md w-full">
-          <h1 className="text-3xl font-bold mb-6 italic tracking-tighter">Instant Talk <span className="text-blue-500">Global</span></h1>
+          <h1 className="text-3xl font-bold mb-6 italic tracking-tighter text-blue-500">Instant Talk</h1>
           <div className="space-y-4">
             <input 
               type="text" 
@@ -51,10 +52,7 @@ export default function Home() {
               onChange={(e) => setRoomName(e.target.value)}
               className="w-full bg-black/40 border border-white/20 p-3 rounded-xl outline-none focus:border-blue-500 transition-all text-center"
             />
-            <button 
-              onClick={joinMeeting}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/30"
-            >
+            <button onClick={joinMeeting} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/30">
               Démarrer la réunion
             </button>
           </div>
@@ -65,7 +63,7 @@ export default function Home() {
 
   return (
     <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white relative overflow-hidden">
-      <div className="absolute top-0 w-full z-20 flex justify-between items-center px-4 sm:px-8 py-4 bg-white/5 backdrop-blur-lg border-b border-white/10">
+      <div className="absolute top-0 w-full z-30 flex justify-between items-center px-4 sm:px-8 py-4 bg-white/5 backdrop-blur-lg border-b border-white/10">
         <h1 className="text-lg font-semibold tracking-wide flex items-center gap-2">
           <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
           Direct <span className="text-blue-500 font-bold">Translate</span>
@@ -94,9 +92,9 @@ export default function Home() {
         className="flex-1"
         onDisconnected={() => setToken("")}
       >
-        <ConferenceLayout />
+        <ConferenceLayout targetLang={targetLang} />
         <RoomAudioRenderer />
-        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-30">
+        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-40">
             <ControlBar variation="minimal" />
         </div>
       </LiveKitRoom>
@@ -104,12 +102,71 @@ export default function Home() {
   );
 }
 
-function ConferenceLayout() {
+function ConferenceLayout({ targetLang }: { targetLang: string }) {
   const tracks = useTracks();
+  const [isTranslating, setIsTranslating] = useState(false);
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+
+  // LOGIQUE DE TRADUCTION INSTANTANÉE
+  const toggleTranslation = async () => {
+    if (isTranslating) {
+      mediaRecorder.current?.stop();
+      setIsTranslating(false);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorder.current = recorder;
+      
+      let chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', audioBlob);
+
+        // Appel de ton API pipeline
+        const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.transcript) {
+          const trRes = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: data.transcript, targetLanguage: targetLang })
+          });
+          const trData = await trRes.json();
+          const audio = new Audio(`data:audio/mp3;base64,${trData.audio}`);
+          audio.play();
+        }
+        
+        if (isTranslating) recorder.start(); // Relance pour l'effet "temps réel"
+      };
+
+      recorder.start();
+      setTimeout(() => recorder.stop(), 3000); // Échantillon de 3 secondes
+      setIsTranslating(true);
+    } catch (e) { console.error(e); }
+  };
 
   return (
-    <GridLayout tracks={tracks} style={{ height: 'calc(100dvh - 64px)', marginTop: '64px' }}>
-      <ParticipantTile />
-    </GridLayout>
+    <div className="relative w-full h-full">
+      <GridLayout tracks={tracks} style={{ height: 'calc(100dvh - 64px)', marginTop: '64px' }}>
+        <ParticipantTile />
+      </GridLayout>
+
+      {/* BOUTON D'ACTION POUR LA TRADUCTION */}
+      <button 
+        onClick={toggleTranslation}
+        className={`absolute top-20 right-8 z-50 px-6 py-2 rounded-full font-bold transition-all shadow-lg ${
+          isTranslating ? 'bg-red-600 animate-pulse' : 'bg-blue-600 hover:bg-blue-500'
+        }`}
+      >
+        {isTranslating ? '👂 IA Écoute...' : '🎤 Activer Traduction Live'}
+      </button>
+    </div>
   );
 }
