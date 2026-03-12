@@ -1,28 +1,41 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { LiveKitRoom, RoomAudioRenderer, ParticipantTile, useTracks, GridLayout, useRoomContext } from '@livekit/components-react';
+import {
+  LiveKitRoom,
+  GridLayout,
+  ParticipantTile,
+  RoomAudioRenderer,
+  ControlBar,
+  useTracks,
+  useRoomContext
+} from '@livekit/components-react';
 import { Track, LocalAudioTrack } from 'livekit-client';
 import '@livekit/components-styles';
 import { DeepgramStreamManager } from '@/lib/deepgramStream';
 
 const SUPPORTED_LANGUAGES = [
-  { code: 'en', name: 'GB Anglais' },
-  { code: 'ja', name: 'JP Japonais' },
-  { code: 'zh', name: 'CN Chinois' },
-  { code: 'de', name: 'DE Allemand' },
-  { code: 'fr', name: 'FR Français' },
-  { code: 'es', name: 'ES Espagnol' },
+  { code: 'en', name: '🇬🇧 Anglais' },
+  { code: 'ja', name: '🇯🇵 Japonais' },
+  { code: 'zh', name: '🇨🇳 Chinois' },
+  { code: 'de', name: '🇩🇪 Allemand' },
+  { code: 'nl', name: '🇳🇱 Néerlandais' },
+  { code: 'fr', name: '🇫🇷 Français' },
+  { code: 'ko', name: '🇰🇷 Coréen' },
+  { code: 'pt', name: '🇵🇹 Portugais' },
+  { code: 'it', name: '🇮🇹 Italien' },
+  { code: 'es', name: '🇪🇸 Espagnol' },
+  { code: 'ar', name: '🇸🇦 Arabe' },
 ];
 
 export default function Home() {
   const [token, setToken] = useState("");
   const [targetLang, setTargetLang] = useState('en');
-  const [roomName, setRoomName] = useState("reunion-b2b");
+  const [roomName, setRoomName] = useState("reunion-test");
 
   const joinMeeting = async () => {
     try {
-      const resp = await fetch(`/api/get-participant-token?room=${roomName}&username=utilisateur-${Math.floor(Math.random() * 1000)}`);
+      const resp = await fetch(`/api/get-participant-token?room=${roomName}&username=user-${Math.floor(Math.random() * 1000)}`);
       const data = await resp.json();
       setToken(data.token);
     } catch (e) { console.error(e); }
@@ -30,35 +43,49 @@ export default function Home() {
 
   if (token === "") {
     return (
-      <main className="flex flex-col h-[100dvh] bg-[#111] text-white items-center justify-center p-4">
-        <h1 className="text-3xl font-bold mb-6">Instant Talk</h1>
-        <button onClick={joinMeeting} className="bg-blue-600 px-8 py-3 rounded-lg font-bold">Rejoindre la salle</button>
+      <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white items-center justify-center p-4">
+        <div className="z-20 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl text-center max-w-md w-full">
+          <h1 className="text-3xl font-bold mb-6 italic">Instant Talk <span className="text-blue-500">Global</span></h1>
+          <div className="space-y-4">
+            <input 
+              type="text" 
+              placeholder="Nom de la réunion" 
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              className="w-full bg-black/40 border border-white/20 p-3 rounded-xl outline-none focus:border-blue-500 transition-all text-center"
+            />
+            <button 
+              onClick={joinMeeting}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/30"
+            >
+              Démarrer la réunion
+            </button>
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="flex flex-col h-[100dvh] bg-[#1a1a1a] text-white overflow-hidden">
-      {/* HEADER EXACTEMENT COMME TA CAPTURE */}
-      <div className="flex justify-between items-center px-6 py-4 bg-[#111] border-b border-white/5 z-20">
-        <h1 className="text-sm font-semibold flex items-center gap-2">
-          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-          Direct <span className="text-blue-500">Traduire</span>
+    <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white relative overflow-hidden">
+      {/* TON INTERFACE D'ORIGINE RESTAURÉE */}
+      <div className="absolute top-0 w-full z-20 flex justify-between items-center px-4 sm:px-8 py-4 bg-white/5 backdrop-blur-lg border-b border-white/10">
+        <h1 className="text-lg font-semibold tracking-wide flex items-center gap-2">
+          <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
+          Direct <span className="text-blue-500 font-bold">Translate</span>
         </h1>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <select 
             value={targetLang}
             onChange={(e) => setTargetLang(e.target.value)}
-            className="bg-[#222] border border-white/10 text-white text-xs rounded p-1.5 outline-none cursor-pointer"
+            className="bg-black/40 border border-white/20 text-white text-sm rounded-lg p-2 backdrop-blur-md outline-none"
           >
             {SUPPORTED_LANGUAGES.map((lang) => (
-              <option key={lang.code} value={lang.code}>{lang.name}</option>
+              <option key={lang.code} value={lang.code} className="bg-gray-900 text-white">{lang.name}</option>
             ))}
           </select>
-          <button onClick={() => setToken("")} className="bg-[#331111] text-[#ff4444] px-4 py-1.5 rounded text-xs border border-[#ff4444]/30 hover:bg-[#ff4444] hover:text-white transition-all">
-            Abandonneur
-          </button>
+          <button onClick={() => setToken("")} className="bg-red-500/20 text-red-500 px-3 py-1 rounded-lg text-xs border border-red-500/30 hover:bg-red-500 hover:text-white transition-all">Quitter</button>
         </div>
       </div>
 
@@ -67,10 +94,11 @@ export default function Home() {
         audio={false} // MICRO NATIF COUPÉ
         token={token}
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-        className="flex-1 w-full h-full relative"
+        data-lk-theme="default"
+        className="flex-1 w-full h-full"
         onDisconnected={() => setToken("")}
       >
-        <ConferenceLayout />
+        <MyVideoConference />
         <RoomAudioRenderer />
         <PipelineManager targetLang={targetLang} />
       </LiveKitRoom>
@@ -78,18 +106,21 @@ export default function Home() {
   );
 }
 
-function ConferenceLayout() {
-  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
+// TON COMPOSANT VIDÉO D'ORIGINE
+function MyVideoConference() {
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false }
+  ], { onlySubscribed: false });
+
   return (
-    <div className="p-2 h-full w-full">
-      <GridLayout tracks={tracks} style={{ height: '100%' }}>
-        <ParticipantTile />
-      </GridLayout>
-    </div>
+    <GridLayout tracks={tracks} style={{ height: 'calc(100dvh - 64px)', marginTop: '64px' }}>
+      <ParticipantTile />
+    </GridLayout>
   );
 }
 
-// --- LE MOTEUR SFU D'INJECTION WEB-RTC CORRIGÉ ---
+// LE MOTEUR IA (INJECTÉ EN BAS)
 function PipelineManager({ targetLang }: { targetLang: string }) {
   const room = useRoomContext();
   const audioQueue = useRef<string[]>([]);
@@ -98,7 +129,6 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
   const [currentText, setCurrentText] = useState("");
   const streamManager = useRef<DeepgramStreamManager | null>(null);
 
-  // RÉFÉRENCES WEBRTC PERSISTANTES
   const audioCtxRef = useRef<AudioContext | null>(null);
   const destRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const aiTrackRef = useRef<LocalAudioTrack | null>(null);
@@ -127,27 +157,31 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
     }
 
     setIsListening(true);
-    setCurrentText("Initialisation du pipeline...");
+    setCurrentText("Connexion...");
 
     try {
-      // 1. CRÉATION DU TUYAU WEBRTC PERMANENT
+      // CORRECTION DU SON : On force le navigateur à débloquer l'audio au moment du clic
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        await audioCtxRef.current.resume();
+      }
+      
+      if (!destRef.current) {
         destRef.current = audioCtxRef.current.createMediaStreamDestination();
         aiTrackRef.current = new LocalAudioTrack(destRef.current.stream.getAudioTracks()[0]);
-        // On publie la piste UNE SEULE FOIS pour éviter les coupures réseau
         await room.localParticipant.publishTrack(aiTrackRef.current);
       }
 
-      // 2. LANCEMENT DE DEEPGRAM
       const resp = await fetch('/api/deepgram-token');
-      const { token } = await resp.json();
-      
+      const { token, error } = await resp.json();
+      if (error || !token) throw new Error(error || "Token Deepgram introuvable");
+
       streamManager.current = new DeepgramStreamManager(async (finalTranscript: string) => {
-        setCurrentText(`...`);
+        setCurrentText(`[Traduction en cours...]`);
         try {
           const fullLangName = SUPPORTED_LANGUAGES.find(l => l.code === langRef.current)?.name || langRef.current;
-          
           const trRes = await fetch('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -159,15 +193,15 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
              setCurrentText(`🗣️ ${trData.translation}`);
              pushToQueue(trData.audio);
           }
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error("Erreur IA", e); }
       });
 
       await streamManager.current.start(token);
-      setCurrentText("Prêt. Parlez !");
+      setCurrentText("IA à l'écoute (Parlez !)");
 
-    } catch (error) {
+    } catch (error: any) {
       setIsListening(false);
-      setCurrentText("Erreur critique.");
+      setCurrentText("Erreur : Clé Deepgram manquante");
     }
   };
 
@@ -189,27 +223,21 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
       const binaryString = window.atob(base64);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-      }
+      for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
 
       const audioBuffer = await audioCtxRef.current.decodeAudioData(bytes.buffer);
       const source = audioCtxRef.current.createBufferSource();
       source.buffer = audioBuffer;
 
-      // LA MAGIE EST ICI :
-      // 1. On envoie l'audio dans le réseau LiveKit pour l'autre personne
+      // Injection dans le réseau (l'autre personne entend) ET en local (tu entends)
       source.connect(destRef.current);
-      // 2. On l'envoie AUSSI dans tes enceintes locales pour que tu saches que l'IA a parlé
       source.connect(audioCtxRef.current.destination);
 
       source.onended = () => {
         isPlaying.current = false;
         playNext();
       };
-
       source.start(0);
-
     } catch (e) { 
       isPlaying.current = false; 
       playNext(); 
@@ -217,20 +245,20 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
   };
 
   return (
-    <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center gap-4 w-full px-4 pointer-events-none">
+    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center gap-4">
        {currentText && (
-         <div className="bg-black/90 text-white px-6 py-2 rounded-md text-sm shadow-xl max-w-md text-center pointer-events-auto border border-white/10">
+         <div className="bg-black/80 text-white px-6 py-2 rounded-lg backdrop-blur text-sm border border-white/10 text-center">
             {currentText}
          </div>
        )}
        
        <button 
         onClick={toggleListening}
-        className={`pointer-events-auto px-6 py-2 rounded-full font-bold text-sm transition-all ${
-          isListening ? 'bg-blue-600 text-white' : 'bg-white text-black'
+        className={`px-8 py-3 rounded-full font-bold shadow-2xl transition-all ${
+          isListening ? 'bg-red-600 hover:bg-red-500 animate-pulse' : 'bg-blue-600 hover:bg-blue-500'
         }`}
        >
-         {isListening ? 'Micro IA Actif' : 'Activer Micro IA'}
+         {isListening ? '🔴 Stop IA' : '🎤 Activer Micro IA'}
        </button>
     </div>
   );
