@@ -1,37 +1,80 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef } from 'react';
-import {
-  LiveKitRoom,
-  GridLayout,
-  ParticipantTile,
-  RoomAudioRenderer,
-  ControlBar,
-  useTracks,
-  useRoomContext
-} from '@livekit/components-react';
+import { LiveKitRoom, RoomAudioRenderer, ParticipantTile, useTracks, GridLayout, useRoomContext } from '@livekit/components-react';
 import { Track, LocalAudioTrack } from 'livekit-client';
 import '@livekit/components-styles';
-import { DeepgramStreamManager } from '@/lib/deepgramStream';
 
+// ==========================================
+// 1. LE MOTEUR D'ECOUTE (Intégré pour éviter les bugs)
+// ==========================================
+class DeepgramStreamManager {
+  private socket: WebSocket | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private onFinalTranscript: (text: string) => void;
+  private stream: MediaStream | null = null;
+
+  constructor(onFinalTranscript: (text: string) => void) {
+    this.onFinalTranscript = onFinalTranscript;
+  }
+
+  public async start(apiKey: string) {
+    if (this.socket || this.mediaRecorder) return;
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const wsUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=fr&interim_results=true&endpointing=300`;
+      
+      this.socket = new WebSocket(wsUrl, ['token', apiKey]);
+      this.socket.onopen = () => {
+        this.mediaRecorder = new MediaRecorder(this.stream as MediaStream, { mimeType: 'audio/webm' });
+        this.mediaRecorder.addEventListener('dataavailable', (event) => {
+          if (event.data.size > 0 && this.socket?.readyState === 1) this.socket.send(event.data);
+        });
+        this.mediaRecorder.start(250); 
+      };
+      this.socket.onmessage = (message) => {
+        const received = JSON.parse(message.data);
+        const transcript = received.channel?.alternatives?.[0]?.transcript;
+        if (!transcript) return;
+        if (received.is_final || received.speech_final) {
+           this.onFinalTranscript(transcript);
+        }
+      };
+      this.socket.onclose = () => this.stop();
+    } catch (err) {
+      console.error("Erreur Micro/Deepgram", err);
+    }
+  }
+
+  public stop() {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') this.mediaRecorder.stop();
+    if (this.stream) this.stream.getTracks().forEach(track => track.stop());
+    if (this.socket) this.socket.close();
+    this.mediaRecorder = null;
+    this.socket = null;
+    this.stream = null;
+  }
+}
+
+// ==========================================
+// 2. CONFIGURATION DES LANGUES
+// ==========================================
 const SUPPORTED_LANGUAGES = [
-  { code: 'en', name: '🇬🇧 Anglais' },
-  { code: 'ja', name: '🇯🇵 Japonais' },
-  { code: 'zh', name: '🇨🇳 Chinois' },
-  { code: 'de', name: '🇩🇪 Allemand' },
-  { code: 'nl', name: '🇳🇱 Néerlandais' },
-  { code: 'fr', name: '🇫🇷 Français' },
-  { code: 'ko', name: '🇰🇷 Coréen' },
-  { code: 'pt', name: '🇵🇹 Portugais' },
-  { code: 'it', name: '🇮🇹 Italien' },
-  { code: 'es', name: '🇪🇸 Espagnol' },
-  { code: 'ar', name: '🇸🇦 Arabe' },
+  { code: 'en', name: 'GB Anglais' },
+  { code: 'ja', name: 'JP Japonais' },
+  { code: 'zh', name: 'CN Chinois' },
+  { code: 'de', name: 'DE Allemand' },
+  { code: 'fr', name: 'FR Français' },
+  { code: 'es', name: 'ES Espagnol' },
 ];
 
+// ==========================================
+// 3. LA PAGE PRINCIPALE (Ton Interface)
+// ==========================================
 export default function Home() {
   const [token, setToken] = useState("");
   const [targetLang, setTargetLang] = useState('en');
-  const [roomName, setRoomName] = useState("reunion-test");
+  const [roomName, setRoomName] = useState("reunion-b2b");
 
   const joinMeeting = async () => {
     try {
@@ -41,64 +84,49 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  if (token === "") {
+  if (!token) {
     return (
-      <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white items-center justify-center p-4">
-        <div className="z-20 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl text-center max-w-md w-full">
-          <h1 className="text-3xl font-bold mb-6 italic">Instant Talk <span className="text-blue-500">Global</span></h1>
-          <div className="space-y-4">
-            <input 
-              type="text" 
-              placeholder="Nom de la réunion" 
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              className="w-full bg-black/40 border border-white/20 p-3 rounded-xl outline-none focus:border-blue-500 transition-all text-center"
-            />
-            <button 
-              onClick={joinMeeting}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/30"
-            >
-              Démarrer la réunion
-            </button>
-          </div>
-        </div>
+      <main className="flex flex-col h-[100dvh] bg-[#111] text-white items-center justify-center p-4">
+        <h1 className="text-3xl font-bold mb-6">CONVERSATION INSTANTANÉE</h1>
+        <button onClick={joinMeeting} className="bg-blue-600 px-8 py-3 rounded-lg font-bold">Rejoindre la salle</button>
       </main>
     );
   }
 
   return (
-    <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white relative overflow-hidden">
-      {/* TON INTERFACE D'ORIGINE RESTAURÉE */}
-      <div className="absolute top-0 w-full z-20 flex justify-between items-center px-4 sm:px-8 py-4 bg-white/5 backdrop-blur-lg border-b border-white/10">
-        <h1 className="text-lg font-semibold tracking-wide flex items-center gap-2">
-          <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
-          Direct <span className="text-blue-500 font-bold">Translate</span>
+    <main className="flex flex-col h-[100dvh] bg-[#1a1a1a] text-white overflow-hidden">
+      {/* TON HEADER EXACT */}
+      <div className="flex justify-between items-center px-6 py-4 bg-[#111] border-b border-white/5 z-20">
+        <h1 className="text-sm font-semibold flex items-center gap-2 tracking-wide uppercase">
+          <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
+          CONVERSATION INSTANTANÉE
         </h1>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <select 
             value={targetLang}
             onChange={(e) => setTargetLang(e.target.value)}
-            className="bg-black/40 border border-white/20 text-white text-sm rounded-lg p-2 backdrop-blur-md outline-none"
+            className="bg-[#222] border border-white/10 text-white text-xs rounded p-1.5 outline-none cursor-pointer"
           >
             {SUPPORTED_LANGUAGES.map((lang) => (
-              <option key={lang.code} value={lang.code} className="bg-gray-900 text-white">{lang.name}</option>
+              <option key={lang.code} value={lang.code}>{lang.name}</option>
             ))}
           </select>
-          <button onClick={() => setToken("")} className="bg-red-500/20 text-red-500 px-3 py-1 rounded-lg text-xs border border-red-500/30 hover:bg-red-500 hover:text-white transition-all">Quitter</button>
+          <button onClick={() => setToken("")} className="bg-[#331111] text-[#ff4444] px-4 py-1.5 rounded text-xs border border-[#ff4444]/30 hover:bg-[#ff4444] hover:text-white transition-all">
+            Abandonneur
+          </button>
         </div>
       </div>
 
       <LiveKitRoom
         video={true}
-        audio={false} // MICRO NATIF COUPÉ
+        audio={false} // MICRO NATIF MUTÉ : Seule l'IA parlera
         token={token}
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-        data-lk-theme="default"
-        className="flex-1 w-full h-full"
+        className="flex-1 w-full h-full relative"
         onDisconnected={() => setToken("")}
       >
-        <MyVideoConference />
+        <ConferenceLayout />
         <RoomAudioRenderer />
         <PipelineManager targetLang={targetLang} />
       </LiveKitRoom>
@@ -106,29 +134,31 @@ export default function Home() {
   );
 }
 
-// TON COMPOSANT VIDÉO D'ORIGINE
-function MyVideoConference() {
-  const tracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: true },
-    { source: Track.Source.ScreenShare, withPlaceholder: false }
-  ], { onlySubscribed: false });
-
+// ==========================================
+// 4. LA GRILLE VIDÉO
+// ==========================================
+function ConferenceLayout() {
+  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
   return (
-    <GridLayout tracks={tracks} style={{ height: 'calc(100dvh - 64px)', marginTop: '64px' }}>
-      <ParticipantTile />
-    </GridLayout>
+    <div className="p-2 h-full w-full">
+      <GridLayout tracks={tracks} style={{ height: '100%' }}>
+        <ParticipantTile />
+      </GridLayout>
+    </div>
   );
 }
 
-// LE MOTEUR IA (INJECTÉ EN BAS)
+// ==========================================
+// 5. LE CERVEAU IA INVISIBLE (Injection WebRTC)
+// ==========================================
 function PipelineManager({ targetLang }: { targetLang: string }) {
   const room = useRoomContext();
   const audioQueue = useRef<string[]>([]);
   const isPlaying = useRef(false);
   const [isListening, setIsListening] = useState(false);
-  const [currentText, setCurrentText] = useState("");
+  const [status, setStatus] = useState("En attente");
+  
   const streamManager = useRef<DeepgramStreamManager | null>(null);
-
   const audioCtxRef = useRef<AudioContext | null>(null);
   const destRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const aiTrackRef = useRef<LocalAudioTrack | null>(null);
@@ -152,21 +182,17 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
         aiTrackRef.current = null;
       }
       setIsListening(false);
-      setCurrentText("");
+      setStatus("Coupé");
       return;
     }
 
     setIsListening(true);
-    setCurrentText("Connexion...");
+    setStatus("Initialisation...");
 
     try {
-      // CORRECTION DU SON : On force le navigateur à débloquer l'audio au moment du clic
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      if (audioCtxRef.current.state === 'suspended') {
-        await audioCtxRef.current.resume();
-      }
+      // DÉBLOCAGE AUDIO DU NAVIGATEUR ET CRÉATION DU TUYAU WEBRTC
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtxRef.current.state === 'suspended') await audioCtxRef.current.resume();
       
       if (!destRef.current) {
         destRef.current = audioCtxRef.current.createMediaStreamDestination();
@@ -174,12 +200,15 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
         await room.localParticipant.publishTrack(aiTrackRef.current);
       }
 
+      // RÉCUPÉRATION CLÉ DEEPGRAM
+      setStatus("Vérification sécurité...");
       const resp = await fetch('/api/deepgram-token');
-      const { token, error } = await resp.json();
-      if (error || !token) throw new Error(error || "Token Deepgram introuvable");
+      const { token } = await resp.json();
+      if (!token) throw new Error("Clé Deepgram manquante côté serveur");
 
+      // LANCEMENT DE L'ÉCOUTE ET TRADUCTION
       streamManager.current = new DeepgramStreamManager(async (finalTranscript: string) => {
-        setCurrentText(`[Traduction en cours...]`);
+        setStatus(`Traduction de: "${finalTranscript}"...`);
         try {
           const fullLangName = SUPPORTED_LANGUAGES.find(l => l.code === langRef.current)?.name || langRef.current;
           const trRes = await fetch('/api/translate', {
@@ -189,19 +218,20 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
           });
           const trData = await trRes.json();
           
+          if (trData.error) throw new Error(trData.error);
           if (trData.audio && trData.translation) {
-             setCurrentText(`🗣️ ${trData.translation}`);
+             setStatus(`IA parle: ${trData.translation}`);
              pushToQueue(trData.audio);
           }
-        } catch (e) { console.error("Erreur IA", e); }
+        } catch (e: any) { setStatus(`Erreur IA: ${e.message}`); }
       });
 
       await streamManager.current.start(token);
-      setCurrentText("IA à l'écoute (Parlez !)");
+      setStatus("IA ÉCOUTE 🟢");
 
     } catch (error: any) {
       setIsListening(false);
-      setCurrentText("Erreur : Clé Deepgram manquante");
+      setStatus(`Erreur: ${error.message}`);
     }
   };
 
@@ -213,6 +243,7 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
   const playNext = async () => {
     if (audioQueue.current.length === 0) {
       isPlaying.current = false;
+      if (isListening) setStatus("IA ÉCOUTE 🟢");
       return;
     }
     isPlaying.current = true;
@@ -229,37 +260,30 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
       const source = audioCtxRef.current.createBufferSource();
       source.buffer = audioBuffer;
 
-      // Injection dans le réseau (l'autre personne entend) ET en local (tu entends)
+      // ENVOI DU SON À L'AUTRE PERSONNE (destRef) ET À TOI (destination)
       source.connect(destRef.current);
       source.connect(audioCtxRef.current.destination);
 
-      source.onended = () => {
-        isPlaying.current = false;
-        playNext();
-      };
+      source.onended = () => { isPlaying.current = false; playNext(); };
       source.start(0);
     } catch (e) { 
-      isPlaying.current = false; 
-      playNext(); 
+      isPlaying.current = false; playNext(); 
     }
   };
 
   return (
-    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center gap-4">
-       {currentText && (
-         <div className="bg-black/80 text-white px-6 py-2 rounded-lg backdrop-blur text-sm border border-white/10 text-center">
-            {currentText}
-         </div>
-       )}
-       
+    <div className="absolute bottom-6 left-6 z-50 flex flex-col items-start gap-2">
        <button 
         onClick={toggleListening}
-        className={`px-8 py-3 rounded-full font-bold shadow-2xl transition-all ${
-          isListening ? 'bg-red-600 hover:bg-red-500 animate-pulse' : 'bg-blue-600 hover:bg-blue-500'
+        className={`px-4 py-2 rounded font-bold text-white text-sm border transition-all shadow-xl ${
+          isListening ? 'bg-red-600 border-red-500 animate-pulse' : 'bg-[#222] border-white/20 hover:bg-[#333]'
         }`}
        >
-         {isListening ? '🔴 Stop IA' : '🎤 Activer Micro IA'}
+         {isListening ? '🔴 Couper Micro IA' : '⚡ Activer Micro IA'}
        </button>
+       <div className="bg-black text-green-400 font-mono text-[10px] px-2 py-1 rounded border border-white/10 max-w-xs shadow-xl">
+         [LOG]: {status}
+       </div>
     </div>
   );
 }
