@@ -108,11 +108,10 @@ export default function Home() {
 }
 
 function MyVideoConference() {
-  // Correction ici : on retire les propriétés 'name' qui faisaient crasher le build
   const tracks = useTracks(
     [
-      { source: Track.Source.Camera },
-      { source: Track.Source.ScreenShare },
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false },
   );
