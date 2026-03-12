@@ -37,7 +37,7 @@ export default function Home() {
       const data = await resp.json();
       setToken(data.token);
     } catch (e) {
-      console.error("Erreur de token:", e);
+      console.error(e);
     }
   };
 
