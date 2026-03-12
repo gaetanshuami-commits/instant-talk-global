@@ -32,16 +32,16 @@ export default function Home() {
   if (!token) {
     return (
       <main className="flex flex-col h-[100dvh] bg-[#111] text-white items-center justify-center p-4">
-        <h1 className="text-3xl font-bold mb-6">CONVERSATION INSTANTANÉE</h1>
-        <button onClick={joinMeeting} className="bg-blue-600 px-8 py-3 rounded-lg font-bold">Rejoindre la salle</button>
+        <h1 className="text-3xl font-bold mb-6 tracking-widest">CONVERSATION INSTANTANÉE</h1>
+        <button onClick={joinMeeting} className="bg-[#cc0000] px-8 py-3 rounded font-bold hover:bg-red-700 transition-all">Rejoindre la salle</button>
       </main>
     );
   }
 
   return (
-    <main className="flex flex-col h-[100dvh] bg-[#1a1a1a] text-white overflow-hidden">
-      {/* HEADER EXACTEMENT COMME TA CAPTURE */}
-      <div className="flex justify-between items-center px-6 py-4 bg-[#111] border-b border-white/5 z-20">
+    <main className="flex flex-col h-[100dvh] bg-[#1a1a1a] text-white overflow-hidden relative">
+      {/* HEADER STRICT */}
+      <div className="flex justify-between items-center px-6 py-4 bg-[#111] border-b border-[#333] z-20">
         <h1 className="text-sm font-bold flex items-center gap-2 tracking-wide uppercase">
           <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
           CONVERSATION INSTANTANÉE
@@ -57,37 +57,37 @@ export default function Home() {
               <option key={lang.code} value={lang.code}>{lang.name}</option>
             ))}
           </select>
-          <button onClick={() => { setToken(""); setIsListening(false); }} className="bg-[#331111] text-[#ff4444] px-4 py-1.5 rounded text-xs border border-[#ff4444]/30 hover:bg-[#ff4444] hover:text-white transition-all">
+          <button onClick={() => { setToken(""); setIsListening(false); }} className="bg-[#2a0b0b] text-[#ff4444] px-4 py-1.5 rounded text-xs border border-[#ff4444]/30 hover:bg-[#ff4444] hover:text-white transition-all">
             Abandonneur
           </button>
         </div>
       </div>
 
+      {/* BOUTON MICRO IA : FIXÉ AU-DESSUS DE TOUT */}
+      <div className="fixed bottom-10 left-10 z-[99999]">
+         <button 
+          onClick={() => setIsListening(!isListening)}
+          className={`px-6 py-3 rounded-lg font-bold text-white text-sm transition-all shadow-2xl border ${
+            isListening ? 'bg-[#e50000] border-red-400 animate-pulse' : 'bg-blue-600 border-blue-400 hover:bg-blue-500'
+          }`}
+         >
+           {isListening ? '🔴 Couper Micro IA' : '🎤 Activer Micro IA'}
+         </button>
+      </div>
+
       <LiveKitRoom
         video={true}
-        audio={false} // MICRO NATIF MUTÉ : L'autre personne n'entendra que l'IA
+        audio={false} // Micro natif coupé
         token={token}
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-        className="flex-1 w-full h-full relative"
+        className="flex-1 w-full h-full relative z-0"
         onDisconnected={() => setToken("")}
       >
         <ConferenceLayout />
         <RoomAudioRenderer />
         
-        {/* LE CERVEAU IA INVISIBLE EST ICI */}
+        {/* LE MOTEUR IA INVISIBLE */}
         <AIAudioInjector targetLang={targetLang} isActive={isListening} />
-
-        {/* BOUTON D'ACTIVATION DU MICRO IA */}
-        <div className="absolute bottom-6 left-6 z-50">
-           <button 
-            onClick={() => setIsListening(!isListening)}
-            className={`px-4 py-2 rounded font-bold text-white text-sm border transition-all shadow-xl ${
-              isListening ? 'bg-red-600 border-red-500 animate-pulse' : 'bg-blue-600 border-blue-500 hover:bg-blue-500'
-            }`}
-           >
-             {isListening ? '🔴 Couper Micro IA' : '🎤 Activer Micro IA'}
-           </button>
-        </div>
       </LiveKitRoom>
     </main>
   );
