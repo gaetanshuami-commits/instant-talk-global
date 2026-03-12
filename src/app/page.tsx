@@ -1,8 +1,8 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { LiveKitRoom, RoomAudioRenderer, ParticipantTile, useTracks, GridLayout, ControlBar } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { LiveKitRoom, RoomAudioRenderer, ParticipantTile, useTracks, GridLayout, ControlBar, useRoomContext } from '@livekit/components-react';
+import { Track, LocalAudioTrack } from 'livekit-client';
 import '@livekit/components-styles';
 import { DeepgramStreamManager } from '@/lib/deepgramStream';
 
@@ -60,7 +60,6 @@ export default function Home() {
 
   return (
     <main className="flex flex-col h-[100dvh] bg-[#0a0a0a] text-white relative overflow-hidden">
-      {/* HEADER RESTAURÉ */}
       <div className="absolute top-0 w-full z-20 flex justify-between items-center px-4 sm:px-8 py-4 bg-white/5 backdrop-blur-lg border-b border-white/10">
         <h1 className="text-lg font-semibold tracking-wide flex items-center gap-2">
           <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
@@ -83,7 +82,7 @@ export default function Home() {
 
       <LiveKitRoom
         video={true}
-        audio={false} // MICRO NATIF COUPÉ (Pour laisser l'IA faire)
+        audio={false} // MICRO NATIF TOUJOURS COUPÉ
         token={token}
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
         data-lk-theme="default"
@@ -94,7 +93,6 @@ export default function Home() {
         <RoomAudioRenderer />
         <PipelineManager targetLang={targetLang} />
         
-        {/* BARRE DE CONTRÔLE LIVEKIT */}
         <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-30 hidden md:block">
             <ControlBar variation="minimal" />
         </div>
@@ -103,7 +101,6 @@ export default function Home() {
   );
 }
 
-// --- LE DESIGN PARFAIT DE LA GRILLE ---
 function ConferenceLayout() {
   const tracks = useTracks(
     [
@@ -120,13 +117,18 @@ function ConferenceLayout() {
   );
 }
 
-// --- LE CERVEAU CACHÉ DE L'IA ---
+// --- LE MOTEUR SFU D'INJECTION WEB-RTC ---
 function PipelineManager({ targetLang }: { targetLang: string }) {
+  const room = useRoomContext(); // Récupère l'accès direct au serveur LiveKit
   const audioQueue = useRef<string[]>([]);
   const isPlaying = useRef(false);
   const [isListening, setIsListening] = useState(false);
   const [currentText, setCurrentText] = useState("");
   const streamManager = useRef<DeepgramStreamManager | null>(null);
+
+  // CORRECTION CLOTURE REACT : On garde toujours la langue cible à jour
+  const langRef = useRef(targetLang);
+  useEffect(() => { langRef.current = targetLang; }, [targetLang]);
 
   useEffect(() => {
     return () => { streamManager.current?.stop(); };
@@ -150,17 +152,23 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
       if (error || !token) throw new Error(error || "Token Deepgram introuvable");
 
       streamManager.current = new DeepgramStreamManager(async (finalTranscript: string) => {
-        setCurrentText(`Traduction : "${finalTranscript}"...`);
+        // CORRECTION VISUELLE : On indique qu'on est en train de traduire
+        setCurrentText(`[Traduction en cours]...`);
         try {
+          // On passe le vrai nom de la langue à Gemini
+          const fullLangName = SUPPORTED_LANGUAGES.find(l => l.code === langRef.current)?.name || langRef.current;
+          
           const trRes = await fetch('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: finalTranscript, targetLanguage: targetLang })
+            body: JSON.stringify({ text: finalTranscript, targetLanguage: fullLangName })
           });
           const trData = await trRes.json();
-          if (trData.audio) {
+          
+          if (trData.audio && trData.translation) {
+             // CORRECTION VISUELLE : On affiche LA TRADUCTION, pas la phrase d'origine
+             setCurrentText(`🗣️ ${trData.translation}`);
              pushToQueue(trData.audio);
-             setCurrentText("");
           }
         } catch (e) { console.error("Erreur IA", e); }
       });
@@ -180,6 +188,7 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
     if (!isPlaying.current) playNext();
   };
 
+  // L'INJECTEUR WEB-RTC (Le vrai Graal de l'architecture)
   const playNext = async () => {
     if (audioQueue.current.length === 0) {
       isPlaying.current = false;
@@ -187,18 +196,52 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
     }
     isPlaying.current = true;
     const base64 = audioQueue.current.shift();
-    if (!base64) return;
+    if (!base64 || typeof window === 'undefined') return;
     
-    const audio = new Audio(`data:audio/mp3;base64,${base64}`);
-    audio.onended = () => { isPlaying.current = false; playNext(); };
-    try { await audio.play(); } 
-    catch (e) { isPlaying.current = false; playNext(); }
+    try {
+      // 1. Décodage du Base64 en binaire brut
+      const binaryString = window.atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // 2. Utilisation de l'AudioContext du navigateur
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+
+      // 3. Création d'une "fausse sortie" (Destination virtuelle)
+      const destination = audioCtx.createMediaStreamDestination();
+      source.connect(destination);
+
+      // 4. Injection de cette fausse sortie dans le réseau LiveKit (L'autre personne entend !)
+      const track = new LocalAudioTrack(destination.stream.getAudioTracks()[0]);
+      await room.localParticipant.publishTrack(track);
+
+      source.onended = () => {
+        // Dès que l'audio est fini, on retire la piste virtuelle du réseau
+        room.localParticipant.unpublishTrack(track);
+        isPlaying.current = false;
+        playNext();
+      };
+
+      source.start(0);
+
+    } catch (e) { 
+      console.error("Erreur Injection WebRTC:", e);
+      isPlaying.current = false; 
+      playNext(); 
+    }
   };
 
   return (
     <div className="absolute bottom-[100px] left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center gap-4 w-full px-4 pointer-events-none">
        {currentText && (
-         <div className="bg-black/70 text-gray-200 px-6 py-2 rounded-full backdrop-blur-md text-sm sm:text-base border border-white/10 shadow-xl max-w-md text-center pointer-events-auto">
+         <div className="bg-black/70 text-green-400 font-medium px-6 py-2 rounded-full backdrop-blur-md text-sm sm:text-base border border-white/10 shadow-xl max-w-md text-center pointer-events-auto">
             {currentText}
          </div>
        )}
