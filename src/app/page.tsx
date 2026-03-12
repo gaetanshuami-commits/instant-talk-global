@@ -37,7 +37,7 @@ export default function Home() {
       const data = await resp.json();
       setToken(data.token);
     } catch (e) {
-      console.error(e);
+      console.error("Erreur de token:", e);
     }
   };
 
@@ -110,8 +110,8 @@ export default function Home() {
 function MyVideoConference() {
   const tracks = useTracks(
     [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
+      { source: Track.Source.Camera },
+      { source: Track.Source.ScreenShare },
     ],
     { onlySubscribed: false },
   );
