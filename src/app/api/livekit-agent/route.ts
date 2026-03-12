@@ -4,18 +4,21 @@
   stt, 
   llm 
 } from '@livekit/agents';
-// Configuration de l'agent avec tes clés
-// On utilise ton Voice ID ElevenLabs pour le clonage parfait
-const agent = new VoicePipelineAgent({
-  stt: new stt.Deepgram(),
-  llm: new llm.Google({ model: 'gemini-1.5-flash' }),
-  tts: new tts.ElevenLabs({ 
+import { DeepgramSTT } from '@livekit/agents-plugin-deepgram';
+import { GoogleLLM } from '@livekit/agents-plugin-google';
+import { ElevenLabsTTS } from '@livekit/agents-plugin-elevenlabs';
+
+// On définit l'agent qui va vivre dans la salle
+export const agent = new VoicePipelineAgent({
+  stt: new DeepgramSTT(),
+  llm: new GoogleLLM({ model: 'gemini-1.5-flash' }),
+  tts: new ElevenLabsTTS({ 
     voiceId: 'QaWvcRVDzoGrTmTauQpi',
     modelId: 'eleven_multilingual_v2' 
   }),
 });
 
-// L'agent attend qu'une personne parle pour traduire
-agent.on('user_speech_committed', (msg) => {
-  console.log('Traduction en cours pour:', msg.text);
-});
+// Cette route est nécessaire pour que LiveKit puisse appeler l'agent
+export async function POST(req: Request) {
+  return new Response("Agent LiveKit Actif", { status: 200 });
+}
