@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { LiveKitRoom, RoomAudioRenderer, ParticipantTile, useTracks } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import '@livekit/components-styles';
+import { DeepgramStreamManager } from '@/lib/deepgramStream';
 
 // --- CONFIGURATION ---
 const SUPPORTED_LANGUAGES = [
@@ -24,9 +25,7 @@ export default function InstantTalkPage() {
       const resp = await fetch(`/api/get-participant-token?room=${roomName}&username=user-${Math.random().toString(36).substring(7)}`);
       const data = await resp.json();
       setToken(data.token);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   if (!token) return (
@@ -43,7 +42,7 @@ export default function InstantTalkPage() {
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       video={true}
-      audio={false} // CRITIQUE : Micro natif coupé du réseau
+      audio={false} // CRITIQUE : Micro natif coupé
       connectOptions={{ autoSubscribe: true }}
       className="h-[100dvh] bg-[#050505] relative"
     >
@@ -74,7 +73,6 @@ function FixedGrid() {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 h-full pt-20">
       {tracks.filter(t => t.source === Track.Source.Camera).map(t => (
         <div key={t.participant.identity} className="relative rounded-2xl overflow-hidden border border-white/5 bg-gray-900 shadow-2xl">
-           {/* CORRECTION ICI : Retrait de disableFollower */}
            <ParticipantTile trackRef={t} />
         </div>
       ))}
@@ -86,30 +84,67 @@ function FixedGrid() {
 function PipelineManager({ targetLang }: { targetLang: string }) {
   const audioQueue = useRef<string[]>([]);
   const isPlaying = useRef(false);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [currentText, setCurrentText] = useState("");
+  const streamManager = useRef<DeepgramStreamManager | null>(null);
 
   useEffect(() => {
-    // Activation silencieuse du micro local
-    const initMicrophone = async () => {
-      try {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log(`Pipeline actif. Langue cible: ${targetLang}`);
-        // Le flux est capté, prêt pour l'envoi vers Deepgram
-      } catch (e) {
-        console.error("Erreur accès micro", e);
-      }
-    };
-    
-    initMicrophone();
-    
+    // Nettoyage si on quitte la salle
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
+      streamManager.current?.stop();
     };
-  }, [targetLang]);
+  }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const toggleListening = async () => {
+    if (isListening) {
+      streamManager.current?.stop();
+      setIsListening(false);
+      setCurrentText("Micro coupé");
+      return;
+    }
+
+    setIsListening(true);
+    setCurrentText("Connexion IA ultra-rapide...");
+
+    // 1. On récupère un token Deepgram sécurisé via notre API
+    try {
+      const resp = await fetch('/api/deepgram-token');
+      const { token } = await resp.json();
+      
+      if (!token) throw new Error("Token Deepgram introuvable");
+
+      // 2. On lance l'écoute continue
+      streamManager.current = new DeepgramStreamManager(async (finalTranscript: string) => {
+        // Cette fonction est appelée UNIQUEMENT quand Deepgram détecte la fin d'une phrase
+        setCurrentText(`Traduction : "${finalTranscript}"...`);
+        
+        try {
+          // On envoie la phrase finie à Gemini + ElevenLabs
+          const trRes = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: finalTranscript, targetLanguage: targetLang })
+          });
+          const trData = await trRes.json();
+          
+          if (trData.audio) {
+             pushToQueue(trData.audio); // Injection dans la file d'attente
+             setCurrentText(""); // On nettoie l'écran
+          }
+        } catch (e) { console.error("Erreur IA", e); }
+      });
+
+      await streamManager.current.start(token);
+      setCurrentText("IA à l'écoute (Parlez naturellement)");
+
+    } catch (error) {
+      console.error(error);
+      setIsListening(false);
+      setCurrentText("Erreur connexion Deepgram");
+    }
+  };
+
+  // Gestion de la file d'attente Audio
   const pushToQueue = (base64: string) => {
     audioQueue.current.push(base64);
     if (!isPlaying.current) playNext();
@@ -135,11 +170,28 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
     try {
       await audio.play();
     } catch (e) {
-      console.error("Erreur lecture audio", e);
       isPlaying.current = false;
       playNext();
     }
   };
 
-  return null;
+  return (
+    <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center gap-4">
+       {/* Affichage des sous-titres discrets */}
+       {currentText && (
+         <div className="bg-black/80 text-white px-6 py-2 rounded-lg backdrop-blur text-sm border border-white/10 max-w-xs text-center">
+            {currentText}
+         </div>
+       )}
+       
+       <button 
+        onClick={toggleListening}
+        className={`px-8 py-3 rounded-full font-bold shadow-2xl transition-all ${
+          isListening ? 'bg-red-600 hover:bg-red-500 animate-pulse' : 'bg-blue-600 hover:bg-blue-500'
+        }`}
+       >
+         {isListening ? '🔴 Stop IA' : '🎤 Activer Micro IA'}
+       </button>
+    </div>
+  );
 }
