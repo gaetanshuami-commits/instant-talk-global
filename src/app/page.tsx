@@ -74,7 +74,8 @@ function FixedGrid() {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 h-full pt-20">
       {tracks.filter(t => t.source === Track.Source.Camera).map(t => (
         <div key={t.participant.identity} className="relative rounded-2xl overflow-hidden border border-white/5 bg-gray-900 shadow-2xl">
-           <ParticipantTile trackRef={t} disableFollower={true} />
+           {/* CORRECTION ICI : Retrait de disableFollower */}
+           <ParticipantTile trackRef={t} />
         </div>
       ))}
     </div>
@@ -108,7 +109,6 @@ function PipelineManager({ targetLang }: { targetLang: string }) {
     };
   }, [targetLang]);
 
-  // Fonction exposée pour la future injection audio
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const pushToQueue = (base64: string) => {
     audioQueue.current.push(base64);
