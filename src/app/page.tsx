@@ -1,5 +1,4 @@
-﻿import { AIAudioInjector } from '@/components/AIAudioInjector';@'
-"use client";
+﻿"use client";
 
 import { useState } from 'react';
 import { LiveKitRoom, RoomAudioRenderer, ParticipantTile, useTracks, GridLayout } from '@livekit/components-react';
@@ -78,7 +77,7 @@ export default function Home() {
         {/* LE CERVEAU IA INVISIBLE EST ICI */}
         <AIAudioInjector targetLang={targetLang} isActive={isListening} />
 
-        {/* BOUTON D'ACTIVATION DU MICRO IA (En bas à gauche comme sur ta capture) */}
+        {/* BOUTON D'ACTIVATION DU MICRO IA */}
         <div className="absolute bottom-6 left-6 z-50">
            <button 
             onClick={() => setIsListening(!isListening)}
@@ -104,4 +103,3 @@ function ConferenceLayout() {
     </div>
   );
 }
-'@ | Out-File -FilePath "src/app/page.tsx" -Encoding utf8
