@@ -12,7 +12,7 @@ function InstantTalkRoom() {
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const synthTrackRef = useRef<LocalAudioTrack | null>(null);
 
-  // Initialisation de l'AudioQueue et du LocalAudioTrack
+  // 1. Initialisation AudioQueue & LocalAudioTrack (WebRTC Injection)
   useEffect(() => {
     if (!audioQueueRef.current) {
       const queue = new AudioQueue();
@@ -28,7 +28,7 @@ function InstantTalkRoom() {
     };
   }, []);
 
-  // Publication du track de traduction dans LiveKit
+  // 2. Publication du flux traduit vers LiveKit
   useEffect(() => {
     if (localParticipant && synthTrackRef.current) {
       localParticipant.publishTrack(synthTrackRef.current, {
@@ -38,58 +38,69 @@ function InstantTalkRoom() {
     }
   }, [localParticipant]);
 
-  // Écoute du DataChannel pour les interruptions (Audio Drift prevention)
+  // 3. Système d'interruption DataChannel (Anti-superposition)
   useEffect(() => {
     if (!room) return;
 
     const handleDataReceived = (payload: Uint8Array) => {
       const data = JSON.parse(new TextDecoder().decode(payload));
       if (data.type === "interrupt") {
+        // Coupe instantanément l'audio en cours de lecture
         audioQueueRef.current?.flush();
       }
     };
 
     room.on("dataReceived", handleDataReceived);
-    return () => room.off("dataReceived", handleDataReceived);
+    return () => {
+      room.off("dataReceived", handleDataReceived);
+    };
   }, [room]);
 
-  // Fonction appelée par le STT (Deepgram) quand l'utilisateur parle
-  const handleLocalSpeechStart = () => {
+  // --- CÂBLAGE DES ÉVÉNEMENTS STT ET TRADUCTION ---
+
+  // A. À appeler par le WebSocket Deepgram quand l'utilisateur local commence à parler
+  const onLocalSpeechStart = () => {
     if (room && localParticipant) {
+      // Envoi du signal d'interruption aux autres participants
       const payload = new TextEncoder().encode(JSON.stringify({ type: "interrupt" }));
       localParticipant.publishData(payload, { reliable: true });
     }
   };
 
-  // Fonction appelée à la réception de la traduction (Gemini)
-  const handleTranslationReceived = (translatedText: string, targetVoice: string) => {
+  // B. À appeler quand l'API Gemini retourne une traduction texte
+  const onTranslationReceived = (translatedText: string, targetLanguageVoice: string) => {
+    // Ex: targetLanguageVoice = "ja-JP-NanamiNeural"
     if (audioQueueRef.current) {
-      speakAzureStream(translatedText, targetVoice, audioQueueRef.current);
+      speakAzureStream(translatedText, targetLanguageVoice, audioQueueRef.current);
     }
   };
 
   return (
-    <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-xl mt-8 text-center">
-      <p className="text-green-400 font-mono text-sm">
-        ● Pipeline WebRTC & Azure Streaming prêt
+    <div className="p-4 border border-zinc-800 bg-zinc-950 rounded-xl mt-4">
+      <p className="text-sm font-mono text-emerald-500">
+        [Système] Pipeline WebRTC / Azure TTS Actif
+      </p>
+      <p className="text-xs font-mono text-zinc-500 mt-2">
+        ElevenLabs: Purged | DataChannel: Ready
       </p>
     </div>
   );
 }
 
-export default function Home() {
-  const roomUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://your-livekit-url";
-  const token = ""; // À remplacer par le vrai token LiveKit
+export default function Page() {
+  const roomUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "";
+  const token = ""; // À remplacer dynamiquement
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-black text-white">
-      <h1 className="text-4xl font-extrabold mb-2 tracking-tight">Instant Talk</h1>
-      <p className="text-zinc-400 mb-8">Global B2B Communication</p>
-      
-      <LiveKitRoom serverUrl={roomUrl} token={token} connect={false}>
-        <InstantTalkRoom />
-        <RoomAudioRenderer />
-      </LiveKitRoom>
+    <main className="flex min-h-screen items-center justify-center bg-black text-white">
+      {roomUrl ? (
+        <LiveKitRoom serverUrl={roomUrl} token={token} connect={false}>
+          <InstantTalkRoom />
+          <RoomAudioRenderer />
+        </LiveKitRoom>
+      ) : (
+        <p className="font-mono text-zinc-500">En attente des credentials LiveKit...</p>
+      )}
     </main>
   );
 }
