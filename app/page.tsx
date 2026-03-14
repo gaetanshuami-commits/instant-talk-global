@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 import { useRoom, useLocalParticipant, LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import { LocalAudioTrack, Track } from "livekit-client";
-import { AudioQueue } from "@/lib/AudioQueue";
-import { speakAzureStream } from "@/lib/azureSpeech";
+import { AudioQueue } from "../lib/AudioQueue";
+import { speakAzureStream } from "../lib/azureSpeech";
 
 function InstantTalkRoom() {
   const { room } = useRoom();
