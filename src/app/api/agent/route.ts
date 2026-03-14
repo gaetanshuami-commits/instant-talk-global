@@ -1,28 +1,54 @@
-﻿import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+﻿import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(req: Request) {
+export const maxDuration = 30; // Vital pour Vercel (Plan Pro requis pour > 10s)
+export const dynamic = 'force-dynamic';
+
+export async function POST(req: NextRequest) {
   try {
-    const { text, targetLang } = await req.json();
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    
-    const result = await model.generateContent(`Translate to ${targetLang}: "${text}". Only the translation.`);
-    const translation = result.response.text().trim();
+    const { text, targetLanguage, voiceId } = await req.json();
 
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || "QaWvcRVDzoGrTmTauQpi";
-    const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    if (!text) return NextResponse.json({ error: "No text provided" }, { status: 400 });
+
+    // 1. TRADUCTION : Gemini 1.5 Flash (Vitesse lumière)
+    const prompt = `Translate the following text into ${targetLanguage}. 
+                    Output ONLY the translation, maintain a natural oral tone: "${text}"`;
+    
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY!, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: translation, model_id: "eleven_multilingual_v2" })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    });
+    
+    const geminiData = await geminiRes.json();
+    const translatedText = geminiData.candidates[0].content.parts[0].text;
+
+    // 2. CLONAGE VOCAL : ElevenLabs Multilingual v2
+    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId || process.env.ELEVENLABS_VOICE_ID}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: translatedText,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { 
+          stability: 0.40, 
+          similarity_boost: 0.80,
+          style: 0.5,
+          use_speaker_boost: true 
+        }
+      }),
     });
 
-    const audioBuffer = await elRes.arrayBuffer();
-    // Utilisation de Buffer (Node.js) pour éviter les erreurs de build
+    if (!ttsRes.ok) throw new Error("ElevenLabs API Error");
+
+    const audioBuffer = await ttsRes.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
 
-    return NextResponse.json({ audio: base64Audio, translation });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ translatedText, audio: base64Audio });
+  } catch (error) {
+    console.error("Pipeline Error:", error);
+    return NextResponse.json({ error: "Pipeline failed" }, { status: 500 });
   }
 }
