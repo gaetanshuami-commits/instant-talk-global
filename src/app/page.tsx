@@ -1,13 +1,13 @@
 ﻿"use client";
 
 import { useEffect, useRef } from "react";
-import { useRoom, useLocalParticipant, LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
+import { useRoomContext, useLocalParticipant, LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import { LocalAudioTrack, Track } from "livekit-client";
 import { AudioQueue } from "@/lib/AudioQueue";
 import { speakAzureStream } from "@/lib/azureSpeech";
 
 function InstantTalkRoom() {
-  const { room } = useRoom();
+  const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const synthTrackRef = useRef<LocalAudioTrack | null>(null);
@@ -25,13 +25,13 @@ function InstantTalkRoom() {
   }, []);
 
   useEffect(() => {
-    if (localParticipant && synthTrackRef.current) {
+    if (room?.state === "connected" && localParticipant && synthTrackRef.current) {
       localParticipant.publishTrack(synthTrackRef.current, {
         name: "translation-track",
         source: Track.Source.Microphone,
       });
     }
-  }, [localParticipant]);
+  }, [room?.state, localParticipant]);
 
   useEffect(() => {
     if (!room) return;
@@ -74,3 +74,6 @@ export default function Page() {
     </main>
   );
 }
+
+
+
