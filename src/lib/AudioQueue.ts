@@ -1,22 +1,24 @@
 ﻿export class AudioQueue {
-  private context: AudioContext;
+  public context: AudioContext;
   public destination: MediaStreamAudioDestinationNode;
-  private nextStartTime: number = 0;
-  private activeSources: AudioBufferSourceNode[] = [];
+  private nextStartTime: number;
+  private activeSources: AudioBufferSourceNode[];
 
   constructor() {
-    this.context = new AudioContext({ sampleRate: 48000 });
+    this.context = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 48000 });
     this.destination = this.context.createMediaStreamDestination();
+    this.nextStartTime = 0;
+    this.activeSources = [];
   }
 
-  addChunk(pcmData: ArrayBuffer) {
+  public addPCM16(pcmData: ArrayBuffer) {
     const int16 = new Int16Array(pcmData);
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768; 
+      float32[i] = int16[i] / 32768.0;
     }
 
-    const buffer = this.context.createBuffer(1, float32.length, 48000);
+    const buffer = this.context.createBuffer(1, float32.length, this.context.sampleRate);
     buffer.getChannelData(0).set(float32);
 
     const source = this.context.createBufferSource();
@@ -37,9 +39,12 @@
     };
   }
 
-  flush() {
+  public flush() {
     this.activeSources.forEach((source) => {
-      try { source.stop(); } catch (e) {}
+      try {
+        source.stop();
+        source.disconnect();
+      } catch (e) {}
     });
     this.activeSources = [];
     this.nextStartTime = this.context.currentTime;
