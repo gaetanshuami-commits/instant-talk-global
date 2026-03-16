@@ -14,7 +14,7 @@ export function speakAzureStream(text: string, voiceName: string, queue: AudioQu
 
   synthesizer.synthesizing = (s, e) => {
     if (e.result.audioData && e.result.audioData.byteLength > 0) {
-      queue.addChunk(e.result.audioData);
+      queue.addPCM16(e.result.audioData);
     }
   };
 
