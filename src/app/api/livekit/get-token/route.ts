@@ -1,30 +1,29 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { AccessToken } from "livekit-server-sdk";
+﻿import { AccessToken } from "livekit-server-sdk";
+import { NextResponse } from "next/server";
 
-export async function GET(req: NextRequest) {
-  try {
-    const roomName = "instant-talk-test-room";
-    // Identité unique pour permettre le test avec plusieurs navigateurs simultanés
-    const participantName = "user_" + Math.floor(Math.random() * 10000);
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const room = searchParams.get("room");
 
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-
-    if (!apiKey || !apiSecret) {
-      return NextResponse.json({ error: "LIVEKIT_API_KEY ou LIVEKIT_API_SECRET manquant" }, { status: 500 });
-    }
-
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity: participantName,
-    });
-
-    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
-
-    const token = await at.toJwt();
-
-    return NextResponse.json({ token });
-  } catch (error) {
-    console.error("Erreur génération token LiveKit:", error);
-    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+  if (!room) {
+    return NextResponse.json({ error: 'Le paramètre "room" est requis' }, { status: 400 });
   }
+
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    return NextResponse.json({ error: "Configuration serveur LiveKit manquante" }, { status: 500 });
+  }
+
+  const participantIdentity = `User_${Math.floor(Math.random() * 10000)}`;
+
+  const at = new AccessToken(apiKey, apiSecret, {
+    identity: participantIdentity,
+    name: participantIdentity,
+  });
+
+  at.addGrant({ roomJoin: true, room: room });
+
+  return NextResponse.json({ token: await at.toJwt() });
 }
