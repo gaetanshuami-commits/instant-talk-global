@@ -12,7 +12,6 @@ export function HeroVideoPlayer() {
 
     async function safePlay() {
       if (!video) return;
-
       try {
         const promise = video.play();
         if (promise && typeof promise.then === "function") {

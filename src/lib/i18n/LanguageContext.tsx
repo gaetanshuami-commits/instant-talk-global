@@ -32,6 +32,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     if (saved && saved in translations) setLangState(saved);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  }, [lang]);
+
   const setLang = (newLang: LanguageCode) => {
     setLangState(newLang);
     localStorage.setItem("itg_lang", newLang);
@@ -80,13 +85,13 @@ export function LanguageSelector() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition"
+        className="rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
       >
         {lang.toUpperCase()}
       </button>
 
       {open ? (
-        <div className="absolute right-0 mt-3 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl z-50">
+        <div className="absolute right-0 z-50 mt-3 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
           {languagesList.map((item) => (
             <button
               key={item.code}
