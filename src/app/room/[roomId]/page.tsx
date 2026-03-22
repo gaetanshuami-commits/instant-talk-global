@@ -21,10 +21,12 @@ export default function RoomPage() {
   const [captionsRunning, setCaptionsRunning] = useState(false);
   const [captionSpeaker] = useState("You");
   const [translationLoading, setTranslationLoading] = useState(false);
+  const [voiceLoading, setVoiceLoading] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const languageOptions = [
     { code: "FR", label: "Francais" },
@@ -38,6 +40,19 @@ export default function RoomPage() {
     { code: "ZH", label: "Chinese" },
     { code: "JA", label: "Japanese" }
   ];
+
+  const voiceMap: Record<string, string> = {
+    FR: "fr-FR-DeniseNeural",
+    EN: "en-US-JennyNeural",
+    DE: "de-DE-KatjaNeural",
+    ES: "es-ES-ElviraNeural",
+    IT: "it-IT-ElsaNeural",
+    NL: "nl-NL-ColetteNeural",
+    PT: "pt-PT-RaquelNeural",
+    AR: "ar-SA-ZariyahNeural",
+    ZH: "zh-CN-XiaoxiaoNeural",
+    JA: "ja-JP-NanamiNeural"
+  };
 
   useEffect(() => {
     async function connectRoom() {
@@ -90,6 +105,11 @@ export default function RoomPage() {
         socketRef.current.close();
       }
 
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      }
+
       room.disconnect();
     };
   }, [room, roomId]);
@@ -112,7 +132,12 @@ export default function RoomPage() {
 
     async function translateCaption() {
       try {
-        if (!liveCaption || liveCaption === "Live captions are ready." || liveCaption === "Listening...") {
+        if (
+          !liveCaption ||
+          liveCaption === "Live captions are ready." ||
+          liveCaption === "Listening..." ||
+          liveCaption === "Opening captions..."
+        ) {
           return;
         }
 
@@ -167,6 +192,35 @@ export default function RoomPage() {
   async function startLiveCaptions() {
     try {
       if (captionsRunning) return;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      mediaStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = async (event) => {
+        try {
+          if (!event.data || event.data.size < 800) return;
+          if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+
+          const arrayBuffer = await event.data.arrayBuffer();
+          socketRef.current.send(arrayBuffer);
+        } catch (error) {
+          console.error("RECORDER_CHUNK_ERROR", error);
+        }
+      };
 
       const socket = new WebSocket("ws://127.0.0.1:8787");
       socketRef.current = socket;
@@ -224,35 +278,6 @@ export default function RoomPage() {
         setCaptionsRunning(false);
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
-
-      mediaStreamRef.current = stream;
-
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = async (event) => {
-        try {
-          if (!event.data || event.data.size < 800) return;
-          if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
-
-          const arrayBuffer = await event.data.arrayBuffer();
-          socketRef.current.send(arrayBuffer);
-        } catch (error) {
-          console.error("RECORDER_CHUNK_ERROR", error);
-        }
-      };
-
       setLiveCaption("Opening captions...");
       setTranslatedCaption(targetLang === "FR" ? "Opening captions..." : "Preparing translation...");
     } catch (error) {
@@ -280,6 +305,65 @@ export default function RoomPage() {
     mediaStreamRef.current = null;
     socketRef.current = null;
     setCaptionsRunning(false);
+  }
+
+  async function playTranslatedVoice() {
+    try {
+      const text = translatedCaption?.trim();
+
+      if (
+        !text ||
+        text === "Translated captions will appear here." ||
+        text === "Translating..." ||
+        text === "Preparing translation..." ||
+        text === "Unable to start translation."
+      ) {
+        return;
+      }
+
+      setVoiceLoading(true);
+
+      const voiceName = voiceMap[targetLang] || voiceMap.EN;
+
+      const res = await fetch("/api/azure-tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text,
+          voiceName
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.details || data?.error || "Azure TTS failed");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+        if (audioRef.current.src) {
+          URL.revokeObjectURL(audioRef.current.src);
+        }
+      }
+
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error("PLAY_TRANSLATED_VOICE_ERROR", error);
+    } finally {
+      setVoiceLoading(false);
+    }
   }
 
   return (
@@ -373,6 +457,17 @@ export default function RoomPage() {
 
             <div className="mt-4 min-h-[120px] rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4 text-sm leading-7 text-white">
               {translationLoading ? "Translating..." : translatedCaption}
+            </div>
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={playTranslatedVoice}
+                disabled={voiceLoading || translationLoading}
+                className="rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {voiceLoading ? "Generating voice..." : "Play translated voice"}
+              </button>
             </div>
           </div>
         </aside>
