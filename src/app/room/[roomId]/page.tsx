@@ -22,6 +22,8 @@ export default function RoomPage() {
   const [captionSpeaker] = useState("You");
   const [translationLoading, setTranslationLoading] = useState(false);
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+const [audioReady, setAudioReady] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -107,12 +109,13 @@ export default function RoomPage() {
 
       if (audioRef.current) {
         audioRef.current.pause();
-        audioRef.current.src = "";
       }
+
+      if (audioUrl) { URL.revokeObjectURL(audioUrl); }
 
       room.disconnect();
     };
-  }, [room, roomId]);
+  }, [room, roomId, audioUrl]);
 
   useEffect(() => {
     if (!videoTrack) return;
@@ -344,24 +347,30 @@ export default function RoomPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      if (audioRef.current) {
-        audioRef.current.pause();
-        if (audioRef.current.src) {
-          URL.revokeObjectURL(audioRef.current.src);
-        }
-      }
+      if (audioUrl) { URL.revokeObjectURL(audioUrl); }
 
-      const audio = new Audio(url);
-      audioRef.current = audio;
+      setAudioReady(false);
+setAudioUrl(url);
 
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-      };
-
-      await audio.play();
+setTimeout(async () => {
+  try {
+    if (audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.currentTime = 0;
+      audioRef.current.muted = false;
+      audioRef.current.volume = 1;
+      audioRef.current.load();
+      await audioRef.current.play();
+      setAudioReady(true);
+    }
+  } catch (error) {
+    console.error("AUDIO_PLAYBACK_ERROR", error);
+  } finally {
+    setVoiceLoading(false);
+  }
+}, 100);
     } catch (error) {
       console.error("PLAY_TRANSLATED_VOICE_ERROR", error);
-    } finally {
       setVoiceLoading(false);
     }
   }
@@ -459,15 +468,24 @@ export default function RoomPage() {
               {translationLoading ? "Translating..." : translatedCaption}
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col gap-3">
               <button
                 type="button"
                 onClick={playTranslatedVoice}
                 disabled={voiceLoading || translationLoading}
                 className="rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
-                {voiceLoading ? "Generating voice..." : "Play translated voice"}
+                {voiceLoading ? "Generating voice..." : audioReady ? "Replay translated voice" : "Play translated voice"}
               </button>
+
+              <audio
+  ref={audioRef}
+  controls
+  preload="auto"
+  src={audioUrl ?? undefined}
+  onCanPlay={() => setAudioReady(true)}
+  className="w-full"
+/>
             </div>
           </div>
         </aside>
@@ -475,3 +493,5 @@ export default function RoomPage() {
     </div>
   );
 }
+
+
