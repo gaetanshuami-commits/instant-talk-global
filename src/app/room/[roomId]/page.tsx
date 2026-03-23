@@ -7,6 +7,16 @@ import {
 } from "livekit-client";
 import { useParams } from "next/navigation";
 import { VoiceQueue } from "@/lib/realtime/voice-queue";
+import {
+  decodeParticipantLanguageMessage,
+  encodeParticipantLanguageMessage,
+  removeParticipantLanguage,
+  upsertParticipantLanguage
+} from "@/lib/realtime/participant-language-registry";
+import {
+  decodeRoomVoiceIntentMessage,
+  encodeRoomVoiceIntentMessage
+} from "@/lib/realtime/room-voice-intent-channel";
 
 export default function RoomPage() {
   const params = useParams();
@@ -34,6 +44,7 @@ const [audioReady, setAudioReady] = useState(false);
   const [participantLangs, setParticipantLangs] = useState<Record<string, string>>({});
   const [activeSpeakerId, setActiveSpeakerId] = useState("local");
   const lastBroadcastTranscriptRef = useRef("");
+  const lastVoiceIntentRef = useRef("");
 
   const languageOptions = [
     { code: "FR", label: "Francais" },
@@ -134,6 +145,86 @@ const [audioReady, setAudioReady] = useState(false);
       videoTrack.detach(el);
     };
   }, [videoTrack]);
+
+  useEffect(() => {
+    if (!connected) return;
+
+    const localIdentity =
+      room.localParticipant.identity ||
+      room.localParticipant.sid ||
+      "local";
+
+    setParticipantLangs((current) =>
+      upsertParticipantLanguage(current, localIdentity, targetLang)
+    );
+
+    void room.localParticipant.publishData(
+      encodeParticipantLanguageMessage({
+        type: "participant-language",
+        participantId: localIdentity,
+        targetLang,
+        at: Date.now()
+      }),
+      { reliable: true }
+    ).catch((error) => {
+      console.error("PARTICIPANT_LANGUAGE_PUBLISH_ERROR", error);
+    });
+  }, [connected, room, targetLang]);
+
+  useEffect(() => {
+    if (!connected) return;
+
+    const onDataReceived = (payload: Uint8Array, participant?: any) => {
+      const languageMessage = decodeParticipantLanguageMessage(payload);
+
+      if (languageMessage) {
+        setParticipantLangs((current) =>
+          upsertParticipantLanguage(
+            current,
+            languageMessage.participantId,
+            languageMessage.targetLang
+          )
+        );
+        return;
+      }
+
+      const voiceIntent = decodeRoomVoiceIntentMessage(payload);
+
+      if (!voiceIntent) return;
+      if (voiceIntent.participantId === (room.localParticipant.identity || room.localParticipant.sid || "local")) return;
+      if (voiceIntent.targetLang !== targetLang) return;
+
+      const dedupeKey = `${voiceIntent.participantId}:${voiceIntent.at}:${voiceIntent.text}`;
+      if (lastVoiceIntentRef.current === dedupeKey) return;
+      lastVoiceIntentRef.current = dedupeKey;
+
+      setActiveSpeakerId(voiceIntent.participantId);
+      setLiveCaption(voiceIntent.text);
+
+      voiceQueueRef.current?.enqueue({
+        text: voiceIntent.text,
+        lang: voiceIntent.targetLang,
+        voice: voiceIntent.voiceName
+      });
+    };
+
+    const onParticipantDisconnected = (participant: any) => {
+      const participantId = participant?.identity || participant?.sid;
+      if (!participantId) return;
+
+      setParticipantLangs((current) =>
+        removeParticipantLanguage(current, participantId)
+      );
+    };
+
+    room.on("dataReceived", onDataReceived);
+    room.on("participantDisconnected", onParticipantDisconnected);
+
+    return () => {
+      room.off("dataReceived", onDataReceived);
+      room.off("participantDisconnected", onParticipantDisconnected);
+    };
+  }, [connected, room, targetLang]);
 
   useEffect(() => {
     let cancelled = false;
@@ -498,6 +589,9 @@ setTimeout(async () => {
     </div>
   );
 }
+
+
+
 
 
 
