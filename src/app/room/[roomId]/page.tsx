@@ -44,6 +44,10 @@ const [audioReady, setAudioReady] = useState(false);
   const [participantLangs, setParticipantLangs] = useState<Record<string, string>>({});
   const [activeSpeakerId, setActiveSpeakerId] = useState("local");
   const lastBroadcastTranscriptRef = useRef("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatReply, setChatReply] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
   const lastVoiceIntentRef = useRef("");
 
   const languageOptions = [
@@ -406,6 +410,41 @@ const [audioReady, setAudioReady] = useState(false);
     setCaptionsRunning(false);
   }
 
+  async function sendAiMessage() {
+    try {
+      const message = chatInput.trim();
+
+      if (!message) return;
+
+      setChatLoading(true);
+      setChatError("");
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message,
+          activeLanguage: targetLang
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.details || data?.error || "AI chat failed");
+      }
+
+      setChatReply(String(data?.reply || ""));
+    } catch (error) {
+      console.error("ROOM_AI_CHAT_ERROR", error);
+      setChatError(error instanceof Error ? error.message : "Unknown AI chat error");
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
   async function playTranslatedVoice() {
     try {
       const text = translatedCaption?.trim();
@@ -589,6 +628,8 @@ setTimeout(async () => {
     </div>
   );
 }
+
+
 
 
 
