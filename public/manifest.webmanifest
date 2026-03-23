@@ -1,0 +1,16 @@
+{
+  "name": "Instant Talk",
+  "short_name": "InstantTalk",
+  "description": "Native multilingual video communication platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f9fc",
+  "theme_color": "#0A2540",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48 32x32 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

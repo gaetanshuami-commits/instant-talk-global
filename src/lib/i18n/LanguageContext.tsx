@@ -62,11 +62,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
-export const useLanguage = () => {
+export function useLanguage() {
   const ctx = useContext(LanguageContext);
   if (!ctx) throw new Error("Missing Provider");
   return ctx;
-};
+}
 
 export function LanguageSelector() {
   const { lang, setLang } = useLanguage();

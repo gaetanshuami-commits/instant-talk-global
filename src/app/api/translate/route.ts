@@ -1,55 +1,68 @@
-﻿import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-export async function POST(req: Request) {
+const bodySchema = z.object({
+  text: z.string().min(1, "Text is required"),
+  targetLang: z.string().min(2, "Target language is required"),
+  sourceLang: z.string().optional(),
+});
+
+export async function POST(req: NextRequest) {
   try {
-    const { text, targetLanguage } = await req.json();
+    const body = await req.json();
+    const { text, targetLang, sourceLang } = bodySchema.parse(body);
 
-    // 1. GEMINI STRICT : Plus de discussion, que de la traduction
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Clé GEMINI_API_KEY manquante");
-    
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    const prompt = `Tu es un simple algorithme de traduction automatique.
-    Traduis exactement ce texte vers la langue : ${targetLanguage}.
-    RÈGLE ABSOLUE : Renvoie UNIQUEMENT la traduction. Aucun commentaire, aucun mot en plus.
-    Texte : "${text}"`;
-
-    const result = await model.generateContent(prompt);
-    const translatedText = result.response.text().trim();
-
-    // 2. ELEVENLABS STRICT
-    const elApiKey = process.env.ELEVENLABS_API_KEY;
-    if (!elApiKey) throw new Error("Clé ELEVENLABS_API_KEY manquante");
-
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || "QaWvcRVDzoGrTmTauQpi";
-    
-    const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'xi-api-key': elApiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: translatedText,
-        model_id: "eleven_multilingual_v2"
-      })
-    });
-
-    if (!elevenRes.ok) {
-      const errData = await elevenRes.text();
-      throw new Error(`Refus ElevenLabs : ${errData}`);
+    if (!process.env.DEEPL_API_KEY) {
+      return NextResponse.json(
+        { error: "Missing DEEPL_API_KEY in environment variables" },
+        { status: 500 }
+      );
     }
 
-    const audioBuffer = await elevenRes.arrayBuffer();
-    const base64Audio = Buffer.from(audioBuffer).toString('base64');
+    const params = new URLSearchParams();
+    params.append("text", text);
+    params.append("target_lang", targetLang.toUpperCase());
 
-    return NextResponse.json({ audio: base64Audio, translation: translatedText });
-  } catch (error: any) {
-    console.error("Erreur Backend Translate:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (sourceLang) {
+      params.append("source_lang", sourceLang.toUpperCase());
+    }
+
+    const response = await fetch("https://api.deepl.com/v2/translate", {
+      method: "POST",
+      headers: {
+        Authorization: `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+      cache: "no-store",
+    });
+
+    const raw = await response.text();
+
+    if (!response.ok) {
+      return NextResponse.json(
+        {
+          error: "DeepL request failed",
+          details: raw,
+        },
+        { status: 500 }
+      );
+    }
+
+    const data = JSON.parse(raw);
+
+    return NextResponse.json({
+      translatedText: data?.translations?.[0]?.text ?? text,
+      detectedSourceLang:
+        data?.translations?.[0]?.detected_source_language ?? null,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "Invalid request",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 400 }
+    );
   }
 }

@@ -21,7 +21,6 @@ export function HeroVideoPlayer() {
         if (cancelled) return;
         if (error?.name === "AbortError") return;
         if (error?.name === "NotAllowedError") return;
-        console.error("Video play error:", error);
       }
     }
 
@@ -30,9 +29,7 @@ export function HeroVideoPlayer() {
     return () => {
       cancelled = true;
       if (video) {
-        try {
-          video.pause();
-        } catch {}
+        try { video.pause(); } catch {}
       }
     };
   }, []);
@@ -48,11 +45,7 @@ export function HeroVideoPlayer() {
     if (!nextMuted) {
       try {
         await video.play();
-      } catch (error: any) {
-        if (error?.name !== "AbortError" && error?.name !== "NotAllowedError") {
-          console.error("Video play error:", error);
-        }
-      }
+      } catch (error: any) {}
     }
   };
 

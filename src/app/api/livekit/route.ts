@@ -1,27 +1,51 @@
-﻿import { AccessToken } from 'livekit-server-sdk';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { AccessToken } from "livekit-server-sdk";
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const room = url.searchParams.get('room');
-  const username = url.searchParams.get('username');
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
 
-  if (!room || !username) {
-    return NextResponse.json({ error: 'Nom de salle ou utilisateur manquant' }, { status: 400 });
+    const roomName = body?.roomName;
+    const userId = body?.userId;
+
+    if (!roomName || !userId) {
+      return NextResponse.json(
+        { error: "Missing roomName or userId" },
+        { status: 400 }
+      );
+    }
+
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+    if (!apiKey || !apiSecret) {
+      return NextResponse.json(
+        { error: "Missing LiveKit credentials" },
+        { status: 500 }
+      );
+    }
+
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: userId,
+    });
+
+    at.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+    });
+
+    const token = await at.toJwt();
+
+    return NextResponse.json({ token });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "LiveKit token error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
   }
-
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
-
-  if (!apiKey || !apiSecret) {
-    return NextResponse.json({ error: 'Clés LiveKit manquantes sur le serveur' }, { status: 500 });
-  }
-
-  const at = new AccessToken(apiKey, apiSecret, {
-    identity: username,
-  });
-
-  at.addGrant({ roomJoin: true, room: room });
-
-  return NextResponse.json({ token: await at.toJwt() });
 }

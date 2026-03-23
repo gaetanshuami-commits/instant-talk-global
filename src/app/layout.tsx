@@ -1,18 +1,25 @@
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Inter } from "next/font/google";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 
-const inter = Inter({ subsets: ["latin"] });
-
-export const metadata = {
+export const metadata: Metadata = {
   title: "Instant Talk",
-  description: "Native multilingual video communication platform",
+  description:
+    "Instant Talk est une plateforme de communication mondiale avec traduction vocale instantanée, sous-titres synchronisés et expérience premium."
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const viewport: Viewport = {
+  themeColor: "#0A2540"
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="fr">
-      <body className={inter.className}>
+      <body>
         <LanguageProvider>{children}</LanguageProvider>
       </body>
     </html>

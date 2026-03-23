@@ -1,0 +1,327 @@
+warning: in the working copy of 'src/app/page.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/app/page.tsx b/src/app/page.tsx[m
+[1mindex 32151e1..47a35d9 100644[m
+[1m--- a/src/app/page.tsx[m
+[1m+++ b/src/app/page.tsx[m
+[36m@@ -4,6 +4,7 @@[m [mimport { useEffect, useState } from "react";[m
+ import { Navbar } from "@/components/ui/Navbar";[m
+ import { HeroVideoPlayer } from "@/components/ui/HeroVideoPlayer";[m
+ import { TestimonialMarquee } from "@/components/ui/TestimonialMarquee";[m
+[32m+[m[32mimport { useLanguage } from "@/lib/i18n/LanguageContext";[m
+ [m
+ const heroImages = [[m
+   "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",[m
+[36m@@ -14,37 +15,14 @@[m [mconst heroImages = [[m
+   "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=1200&q=80"[m
+ ];[m
+ [m
+[31m-const calendarDays = [[m
+[31m-  { day: "Mon", date: "08", time: "09:00" },[m
+[31m-  { day: "Tue", date: "09", time: "11:30" },[m
+[31m-  { day: "Wed", date: "10", time: "14:00" },[m
+[31m-  { day: "Thu", date: "11", time: "16:00" },[m
+[31m-  { day: "Fri", date: "12", time: "10:00" },[m
+[31m-];[m
+[31m-[m
+[31m-const comparisonItems = [[m
+[31m-  {[m
+[31m-    title: "Voix naturelle en temps réel",[m
+[31m-    text: "Instant Talk traduit la parole instantanément avec une restitution vocale naturelle, là où beaucoup de solutions restent limitées à une expérience plus fragmentée."[m
+[31m-  },[m
+[31m-  {[m
+[31m-    title: "Une seule plateforme",[m
+[31m-    text: "Réunions, rendez-vous, invitations, notes IA, résumés, sous-titres, collaboration et communication mondiale sont réunis dans une seule interface premium."[m
+[31m-  },[m
+[31m-  {[m
+[31m-    title: "Pensé pour le monde entier",[m
+[31m-    text: "La plateforme est conçue pour des équipes internationales, des indépendants, des entreprises et des institutions qui doivent travailler au-delà des langues."[m
+[31m-  }[m
+[31m-];[m
+[31m-[m
+ export default function HomePage() {[m
+[32m+[m[32m  const { t } = useLanguage();[m
+   const [activeImage, setActiveImage] = useState(0);[m
+ [m
+   useEffect(() => {[m
+     const id = setInterval(() => {[m
+       setActiveImage((prev) => (prev + 1) % heroImages.length);[m
+     }, 2600);[m
+[31m-[m
+     return () => clearInterval(id);[m
+   }, []);[m
+ [m
+[36m@@ -72,15 +50,15 @@[m [mexport default function HomePage() {[m
+           <div className="grid gap-14 lg:grid-cols-[1.02fr_.98fr] lg:items-center">[m
+             <div>[m
+               <div className="mb-5 inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#635bff] shadow-sm">[m
+[31m-                Visioconférence native multilingue[m
+[32m+[m[32m                {t("hero.badge")}[m
+               </div>[m
+ [m
+               <h1 className="max-w-4xl text-5xl font-extrabold leading-[1.03] tracking-tight text-[#0a2540] md:text-7xl">[m
+[31m-                Parlez votre langue. Le monde vous comprend instantanément.[m
+[32m+[m[32m                {t("hero.title")}[m
+               </h1>[m
+ [m
+               <p className="mt-7 max-w-2xl text-lg leading-8 text-[#425466] md:text-xl">[m
+[31m-                Instant Talk est une plateforme de communication vidéo conçue dès l’origine pour la traduction vocale temps réel. Chaque personne parle naturellement dans sa langue, pendant que l’IA restitue la conversation avec une voix naturelle, des sous-titres synchronisés et une compréhension immédiate.[m
+[32m+[m[32m                {t("hero.subtitle")}[m
+               </p>[m
+ [m
+               <div className="mt-10 flex flex-col gap-4 sm:flex-row">[m
+[36m@@ -88,23 +66,23 @@[m [mexport default function HomePage() {[m
+                   href="/pricing"[m
+                   className="inline-flex items-center justify-center rounded-full bg-[#0a2540] px-7 py-4 text-base font-semibold text-white shadow-[0_10px_30px_-10px_rgba(10,37,64,0.45)] transition hover:-translate-y-0.5 hover:bg-[#16324f]"[m
+                 >[m
+[31m-                  Voir les offres[m
+[32m+[m[32m                  {t("hero.cta")}[m
+                 </a>[m
+ [m
+                 <a[m
+                   href="/demo"[m
+                   className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-7 py-4 text-base font-semibold text-[#0a2540] transition hover:border-slate-400 hover:bg-slate-50"[m
+                 >[m
+[31m-                  Voir la démo[m
+[32m+[m[32m                  {t("hero.demo")}[m
+                 </a>[m
+               </div>[m
+ [m
+               <div className="mt-10 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">[m
+                 <h2 className="text-2xl font-bold tracking-tight text-[#0a2540]">[m
+[31m-                  Une plateforme pensée pour la communication mondiale[m
+[32m+[m[32m                  {t("showcase.title")}[m
+                 </h2>[m
+                 <p className="mt-3 text-base leading-7 text-[#425466]">[m
+[31m-                  Réunions, rendez-vous, collaboration internationale, traduction vocale instantanée, résumé automatique et expérience premium réunis dans un seul produit.[m
+[32m+[m[32m                  {t("showcase.text")}[m
+                 </p>[m
+               </div>[m
+             </div>[m
+[36m@@ -158,184 +136,29 @@[m [mexport default function HomePage() {[m
+ [m
+       <section className="mx-auto max-w-7xl px-6 py-24">[m
+         <div className="grid gap-6 md:grid-cols-3">[m
+[31m-          <ProofCard[m
+[31m-            title="Voix naturelle en temps réel"[m
+[31m-            text="La conversation est restituée avec une voix fluide pour garder un échange vivant, humain et naturel."[m
+[31m-          />[m
+[31m-          <ProofCard[m
+[31m-            title="Sous-titres synchronisés"[m
+[31m-            text="Chaque participant suit la réunion avec des sous-titres traduits, lisibles et synchronisés en direct."[m
+[31m-          />[m
+[31m-          <ProofCard[m
+[31m-            title="Faible latence"[m
+[31m-            text="La communication reste rapide, claire et naturelle sans casser le rythme humain de la conversation."[m
+[31m-          />[m
+[32m+[m[32m          <ProofCard title={t("proof.p1Title")} text={t("proof.p1Text")} />[m
+[32m+[m[32m          <ProofCard title={t("proof.p2Title")} text={t("proof.p2Text")} />[m
+[32m+[m[32m          <ProofCard title={t("proof.p3Title")} text={t("proof.p3Text")} />[m
+         </div>[m
+       </section>[m
+ [m
+       <section className="mx-auto max-w-7xl px-6 pb-24">[m
+         <div className="max-w-3xl">[m
+           <h2 className="text-4xl font-extrabold tracking-tight text-[#0a2540] md:text-5xl">[m
+[31m-            Tout ce qu’une plateforme moderne doit faire. En mieux.[m
+[32m+[m[32m            {t("features.title")}[m
+           </h2>[m
+           <p className="mt-6 text-lg leading-8 text-[#425466]">[m
+[31m-            Instant Talk réunit la visioconférence, la traduction vocale bidirectionnelle, les sous-titres, les notes IA, les résumés automatiques et la planification dans une seule plateforme.[m
+[32m+[m[32m            {t("features.description")}[m
+           </p>[m
+         </div>[m
+ [m
+         <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-3">[m
+[31m-          <FeatureCard title="Traduction vocale instantanée" text="Chaque participant parle dans sa langue, la plateforme traduit en direct pour tous les autres." />[m
+[31m-          <FeatureCard title="Sous-titres traduits" text="Des sous-titres lisibles, fluides et synchronisés pour une compréhension immédiate." />[m
+[31m-          <FeatureCard title="Résumé automatique" text="Chaque réunion se termine avec un résumé clair, structuré et exploitable." />[m
+[31m-          <FeatureCard title="Prise de notes IA" text="Décisions, points clés et actions sont détectés automatiquement." />[m
+[31m-          <FeatureCard title="Planification des réunions" text="Créez, organisez et partagez vos rendez-vous et réunions depuis une seule interface." />[m
+[31m-          <FeatureCard title="Expérience premium" text="Une plateforme pensée pour les particuliers, les équipes, les entreprises et les institutions." />[m
+[31m-        </div>[m
+[31m-      </section>[m
+[31m-[m
+[31m-      <section className="mx-auto max-w-7xl px-6 pb-24">[m
+[31m-        <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">[m
+[31m-          <div>[m
+[31m-            <div className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#635bff] shadow-sm">[m
+[31m-              Réservation intelligente[m
+[31m-            </div>[m
+[31m-            <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-[#0a2540] md:text-5xl">[m
+[31m-              Planifiez vos rendez-vous internationaux sans friction.[m
+[31m-            </h2>[m
+[31m-            <p className="mt-6 text-lg leading-8 text-[#425466]">[m
+[31m-              Instant Talk ne se limite pas à la réunion. La plateforme permet aussi de proposer des créneaux, d’organiser des rendez-vous, de préparer les échanges multilingues et de fluidifier la coordination entre équipes, clients et partenaires.[m
+[31m-            </p>[m
+[31m-[m
+[31m-            <div className="mt-8 grid gap-4 sm:grid-cols-2">[m
+[31m-              <SmallInfoCard[m
+[31m-                title="Disponibilités claires"[m
+[31m-                text="Montrez vos créneaux, vos réunions à venir et vos temps forts dans une interface simple."[m
+[31m-              />[m
+[31m-              <SmallInfoCard[m
+[31m-                title="Rendez-vous mondiaux"[m
+[31m-                text="Facilitez les échanges avec des personnes qui ne parlent pas votre langue."[m
+[31m-              />[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-[m
+[31m-          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_25px_60px_-30px_rgba(10,37,64,0.22)]">[m
+[31m-            <div className="flex items-center justify-between border-b border-slate-100 pb-5">[m
+[31m-              <div>[m
+[31m-                <p className="text-sm font-semibold text-[#635bff]">Calendrier de rendez-vous</p>[m
+[31m-                <h3 className="mt-1 text-2xl font-bold text-[#0a2540]">Semaine internationale</h3>[m
+[31m-              </div>[m
+[31m-              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">[m
+[31m-                UTC sync[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="mt-6 grid grid-cols-5 gap-3">[m
+[31m-              {calendarDays.map((item) => ([m
+[31m-                <div key={item.day} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">[m
+[31m-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">{item.day}</div>[m
+[31m-                  <div className="mt-2 text-2xl font-extrabold text-[#0a2540]">{item.date}</div>[m
+[31m-                  <div className="mt-3 rounded-full bg-[#0a2540] px-2 py-1 text-xs font-semibold text-white">[m
+[31m-                    {item.time}[m
+[31m-                  </div>[m
+[31m-                </div>[m
+[31m-              ))}[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="mt-6 rounded-2xl border border-[#d9d6ff] bg-[#f7f6ff] p-5">[m
+[31m-              <div className="text-sm font-bold text-[#635bff]">Réunion à venir</div>[m
+[31m-              <div className="mt-2 text-lg font-bold text-[#0a2540]">Paris • Tokyo • Doha • New York</div>[m
+[31m-              <div className="mt-2 text-sm leading-7 text-[#425466]">[m
+[31m-                Les participants reçoivent un lien unique, un horaire clair et une expérience multilingue prête dès l’ouverture de la réunion.[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-        </div>[m
+[31m-      </section>[m
+[31m-[m
+[31m-      <section className="mx-auto max-w-7xl px-6 pb-24">[m
+[31m-        <div className="grid gap-10 lg:grid-cols-[1.02fr_.98fr] lg:items-center">[m
+[31m-          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_25px_60px_-30px_rgba(10,37,64,0.22)]">[m
+[31m-            <div className="flex items-center justify-between border-b border-slate-100 pb-5">[m
+[31m-              <div>[m
+[31m-                <p className="text-sm font-semibold text-[#635bff]">Lien d’invitation</p>[m
+[31m-                <h3 className="mt-1 text-2xl font-bold text-[#0a2540]">Partage simple, accès immédiat</h3>[m
+[31m-              </div>[m
+[31m-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">[m
+[31m-                Live[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">[m
+[31m-              <div className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Lien sécurisé</div>[m
+[31m-              <div className="mt-3 break-all rounded-xl bg-white px-4 py-4 font-mono text-sm text-[#0a2540] shadow-sm">[m
+[31m-                https://instant-talk.app/room/international-board-room[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="mt-5 grid gap-4 sm:grid-cols-3">[m
+[31m-              <ActionPill label="Copier le lien" />[m
+[31m-              <ActionPill label="Envoyer l’invitation" />[m
+[31m-              <ActionPill label="Ajouter au calendrier" />[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="mt-6 rounded-2xl border border-slate-200 p-5">[m
+[31m-              <div className="text-sm font-bold text-[#0a2540]">Ce que voit l’invité</div>[m
+[31m-              <p className="mt-2 text-sm leading-7 text-[#425466]">[m
+[31m-                Un accès clair, une entrée simple dans la réunion, une promesse de communication sans barrière linguistique et une expérience premium dès le premier clic.[m
+[31m-              </p>[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-[m
+[31m-          <div>[m
+[31m-            <div className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#635bff] shadow-sm">[m
+[31m-              Invitation intelligente[m
+[31m-            </div>[m
+[31m-            <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-[#0a2540] md:text-5xl">[m
+[31m-              Un lien d’invitation qui ne se contente pas d’ouvrir une room.[m
+[31m-            </h2>[m
+[31m-            <p className="mt-6 text-lg leading-8 text-[#425466]">[m
+[31m-              Instant Talk prépare la rencontre avant même qu’elle commence. Le lien d’invitation devient une porte d’entrée vers une réunion claire, professionnelle, multilingue et prête pour des échanges internationaux de haut niveau.[m
+[31m-            </p>[m
+[31m-[m
+[31m-            <div className="mt-8 grid gap-4 sm:grid-cols-2">[m
+[31m-              <SmallInfoCard title="Partage rapide" text="Envoyez un lien unique à vos clients, équipes, partenaires ou institutions." />[m
+[31m-              <SmallInfoCard title="Expérience crédible" text="L’invitation reflète immédiatement un produit premium, mondial et structuré." />[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-        </div>[m
+[31m-      </section>[m
+[31m-[m
+[31m-      <section className="mx-auto max-w-7xl px-6 pb-24">[m
+[31m-        <div className="rounded-[36px] border border-slate-200 bg-[#0a2540] p-8 shadow-[0_35px_90px_-35px_rgba(10,37,64,0.38)] md:p-10">[m
+[31m-          <div className="max-w-3xl">[m
+[31m-            <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-white/80">[m
+[31m-              Pourquoi Instant Talk va plus loin[m
+[31m-            </div>[m
+[31m-            <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-white md:text-5xl">[m
+[31m-              Plus qu’une réunion vidéo. Une vraie infrastructure de communication mondiale.[m
+[31m-            </h2>[m
+[31m-            <p className="mt-6 text-lg leading-8 text-white/70">[m
+[31m-              Instant Talk est conçu autour d’un problème plus grand : permettre à n’importe qui dans le monde de se comprendre instantanément, naturellement et professionnellement.[m
+[31m-            </p>[m
+[31m-          </div>[m
+[31m-[m
+[31m-          <div className="mt-10 grid gap-6 md:grid-cols-3">[m
+[31m-            {comparisonItems.map((item) => ([m
+[31m-              <div key={item.title} className="rounded-[24px] border border-white/10 bg-white/5 p-6">[m
+[31m-                <h3 className="text-xl font-bold text-white">{item.title}</h3>[m
+[31m-                <p className="mt-3 text-sm leading-7 text-white/70">{item.text}</p>[m
+[31m-              </div>[m
+[31m-            ))}[m
+[31m-          </div>[m
+[31m-[m
+[31m-          <div className="mt-10 rounded-[24px] border border-white/10 bg-white/5 p-6">[m
+[31m-            <div className="grid gap-6 md:grid-cols-4">[m
+[31m-              <MetricDark label="Traduction vocale" value="Instantanée" />[m
+[31m-              <MetricDark label="Voix" value="Naturelle" />[m
+[31m-              <MetricDark label="Sous-titres" value="Synchronisés" />[m
+[31m-              <MetricDark label="Produit" value="Tout-en-un" />[m
+[31m-            </div>[m
+[31m-          </div>[m
+[32m+[m[32m          <FeatureCard title={t("features.f1Title")} text={t("features.f1Text")} />[m
+[32m+[m[32m          <FeatureCard title={t("features.f2Title")} text={t("features.f2Text")} />[m
+[32m+[m[32m          <FeatureCard title={t("features.f3Title")} text={t("features.f3Text")} />[m
+[32m+[m[32m          <FeatureCard title={t("features.f4Title")} text={t("features.f4Text")} />[m
+[32m+[m[32m          <FeatureCard title={t("features.f5Title")} text={t("features.f5Text")} />[m
+[32m+[m[32m          <FeatureCard title={t("features.f6Title")} text={t("features.f6Text")} />[m
+         </div>[m
+       </section>[m
+ [m
+[36m@@ -360,30 +183,4 @@[m [mfunction FeatureCard({ title, text }: { title: string; text: string }) {[m
+       <p className="mt-3 text-sm leading-7 text-[#425466]">{text}</p>[m
+     </div>[m
+   );[m
+[31m-}[m
+[31m-[m
+[31m-function SmallInfoCard({ title, text }: { title: string; text: string }) {[m
+[31m-  return ([m
+[31m-    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">[m
+[31m-      <h3 className="text-base font-bold text-[#0a2540]">{title}</h3>[m
+[31m-      <p className="mt-2 text-sm leading-7 text-[#425466]">{text}</p>[m
+[31m-    </div>[m
+[31m-  );[m
+[31m-}[m
+[31m-[m
+[31m-function ActionPill({ label }: { label: string }) {[m
+[31m-  return ([m
+[31m-    <div className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-[#0a2540] shadow-sm">[m
+[31m-      {label}[m
+[31m-    </div>[m
+[31m-  );[m
+[31m-}[m
+[31m-[m
+[31m-function MetricDark({ label, value }: { label: string; value: string }) {[m
+[31m-  return ([m
+[31m-    <div className="rounded-[20px] border border-white/10 bg-white/5 p-5">[m
+[31m-      <div className="text-xs font-bold uppercase tracking-[0.18em] text-white/50">{label}</div>[m
+[31m-      <div className="mt-3 text-2xl font-extrabold text-white">{value}</div>[m
+[31m-    </div>[m
+[31m-  );[m
+ }[m
+\ No newline at end of file[m

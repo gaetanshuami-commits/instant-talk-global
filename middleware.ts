@@ -9,6 +9,7 @@ export function middleware(request: NextRequest) {
     if (!access) {
       const url = request.nextUrl.clone();
       url.pathname = "/pricing";
+      url.searchParams.set("source", "room");
       return NextResponse.redirect(url);
     }
   }
