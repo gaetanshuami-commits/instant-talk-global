@@ -128,6 +128,48 @@ export default function PricingPage() {
 
   const faqItems = lang === "fr" ? faqItemsFr : faqItemsEn;
 
+  const [assistantInput, setAssistantInput] = useState(lang === "fr" ? "Quelle formule me convient si je fais des reunions internationales chaque semaine ?" : "Which plan fits me if I run international meetings every week?");
+  const [assistantReply, setAssistantReply] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
+
+  async function askPricingAssistant() {
+    try {
+      const message = assistantInput.trim();
+
+      if (!message) return;
+
+      setAssistantLoading(true);
+      setAssistantError("");
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: lang === "fr"
+            ? `Tu es l assistant pricing premium de Instant Talk. Recommande la formule la plus adaptee entre Premium, Business et Enterprise. Reste concret, premium et court. Question client: ${message}`
+            : `You are the premium pricing assistant for Instant Talk. Recommend the best plan between Premium, Business, and Enterprise. Stay concrete, premium, and concise. Customer question: ${message}`,
+          activeLanguage: lang === "fr" ? "FR" : "EN"
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.details || data?.error || "Pricing assistant failed");
+      }
+
+      setAssistantReply(String(data?.reply || ""));
+    } catch (error) {
+      console.error("PRICING_ASSISTANT_ERROR", error);
+      setAssistantError(error instanceof Error ? error.message : "Unknown pricing assistant error");
+    } finally {
+      setAssistantLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#f6f9fc]">
       <Navbar />
@@ -190,7 +232,44 @@ export default function PricingPage() {
             const features = lang === "fr" ? plan.featuresFr : plan.featuresEn;
             const period = lang === "fr" ? plan.periodFr : plan.periodEn;
 
-            return (
+            async function askPricingAssistant() {
+    try {
+      const message = assistantInput.trim();
+
+      if (!message) return;
+
+      setAssistantLoading(true);
+      setAssistantError("");
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: lang === "fr"
+            ? `Tu es l assistant pricing premium de Instant Talk. Recommande la formule la plus adaptee entre Premium, Business et Enterprise. Reste concret, premium et court. Question client: ${message}`
+            : `You are the premium pricing assistant for Instant Talk. Recommend the best plan between Premium, Business, and Enterprise. Stay concrete, premium, and concise. Customer question: ${message}`,
+          activeLanguage: lang === "fr" ? "FR" : "EN"
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.details || data?.error || "Pricing assistant failed");
+      }
+
+      setAssistantReply(String(data?.reply || ""));
+    } catch (error) {
+      console.error("PRICING_ASSISTANT_ERROR", error);
+      setAssistantError(error instanceof Error ? error.message : "Unknown pricing assistant error");
+    } finally {
+      setAssistantLoading(false);
+    }
+  }
+
+  return (
               <div
                 key={plan.key}
                 className={`rounded-[32px] border bg-white p-8 shadow-[0_20px_60px_-30px_rgba(10,37,64,0.22)] ${
@@ -257,6 +336,66 @@ export default function PricingPage() {
           })}
         </div>
 
+        <section className="mt-20 rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex rounded-full border border-slate-200 bg-[#f6f9fc] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#635bff] shadow-sm">
+                {lang === "fr" ? "Assistant IA pricing" : "AI pricing assistant"}
+              </div>
+              <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-[#0A2540] md:text-5xl">
+                {lang === "fr" ? "Trouvez la bonne formule plus vite" : "Find the right plan faster"}
+              </h2>
+              <p className="mt-4 text-base leading-8 text-[#425466]">
+                {lang === "fr"
+                  ? "Posez votre question et l assistant vous oriente vers la formule la plus adaptee selon votre usage."
+                  : "Ask your question and the assistant will guide you toward the best plan for your use case."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={askPricingAssistant}
+              disabled={assistantLoading || !assistantInput.trim()}
+              className="inline-flex items-center justify-center rounded-full bg-[#0A2540] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#16324f] disabled:opacity-60"
+            >
+              {assistantLoading
+                ? (lang === "fr" ? "Analyse..." : "Analyzing...")
+                : (lang === "fr" ? "Demander a l assistant" : "Ask assistant")}
+            </button>
+          </div>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-[24px] border border-slate-200 bg-[#f8fafc] p-5">
+              <label className="mb-3 block text-sm font-semibold text-[#0A2540]">
+                {lang === "fr" ? "Votre besoin" : "Your need"}
+              </label>
+              <textarea
+                value={assistantInput}
+                onChange={(e) => setAssistantInput(e.target.value)}
+                rows={5}
+                className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#635bff]"
+                placeholder={lang === "fr"
+                  ? "Exemple : nous avons une equipe internationale de 18 personnes..."
+                  : "Example: we are an international team of 18 people..."}
+              />
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200 bg-[#eef2ff] p-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#635bff]">
+                {lang === "fr" ? "Recommandation IA" : "AI recommendation"}
+              </div>
+
+              <div className="mt-4 min-h-[160px] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-[#0A2540]">
+                {assistantError
+                  ? assistantError
+                  : assistantReply || (lang === "fr"
+                    ? "La recommandation de formule apparaitra ici."
+                    : "The plan recommendation will appear here.")}
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="mt-20">
           <div className="max-w-3xl">
             <div className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#635bff] shadow-sm">
@@ -313,5 +452,8 @@ export default function PricingPage() {
     </div>
   );
 }
+
+
+
 
 
