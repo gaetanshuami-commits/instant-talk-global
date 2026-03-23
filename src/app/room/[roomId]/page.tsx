@@ -29,6 +29,9 @@ const [audioReady, setAudioReady] = useState(false);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [participantLangs, setParticipantLangs] = useState<Record<string, string>>({});
+  const [activeSpeakerId, setActiveSpeakerId] = useState("local");
+  const lastBroadcastTranscriptRef = useRef("");
 
   const languageOptions = [
     { code: "FR", label: "Francais" },
@@ -446,7 +449,7 @@ setTimeout(async () => {
             </div>
 
             <div className="mt-4 text-sm text-slate-400">
-              Speaker: {captionSpeaker}
+              Speaker: {activeSpeakerId}
             </div>
 
             <div className="mt-4 min-h-[120px] rounded-xl border border-white/10 bg-black/30 p-4 text-sm leading-7 text-white">
@@ -493,6 +496,9 @@ setTimeout(async () => {
     </div>
   );
 }
+
+
+
 
 
 
