@@ -6,6 +6,7 @@ import {
   Track
 } from "livekit-client";
 import { useParams } from "next/navigation";
+import { VoiceQueue } from "@/lib/realtime/voice-queue";
 
 export default function RoomPage() {
   const params = useParams();
@@ -29,6 +30,7 @@ const [audioReady, setAudioReady] = useState(false);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceQueueRef = useRef<VoiceQueue | null>(null);
   const [participantLangs, setParticipantLangs] = useState<Record<string, string>>({});
   const [activeSpeakerId, setActiveSpeakerId] = useState("local");
   const lastBroadcastTranscriptRef = useRef("");
@@ -496,6 +498,10 @@ setTimeout(async () => {
     </div>
   );
 }
+
+
+
+
 
 
 

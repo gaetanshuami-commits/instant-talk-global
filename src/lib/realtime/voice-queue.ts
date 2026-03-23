@@ -1,4 +1,4 @@
-﻿import type { Room } from "livekit-client";
+import type { Room } from "livekit-client";
 import { publishTranslatedAudioTrack } from "@/lib/realtime/publish-translated-track";
 
 export type VoiceQueueItem = {
@@ -111,8 +111,7 @@ export class VoiceQueue {
       },
       body: JSON.stringify({
         text: item.text,
-        lang: item.lang ?? this.defaultLang,
-        voice: item.voice ?? this.defaultVoice,
+        voiceName: item.voice ?? this.defaultVoice,
       }),
     });
 
