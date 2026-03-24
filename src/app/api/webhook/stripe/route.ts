@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,22 @@ const stripe = stripeKey
       apiVersion: "2026-02-25.clover",
     })
   : null;
+
+function unixToDate(value: number | null | undefined): Date | null {
+  return typeof value === "number" ? new Date(value * 1000) : null;
+}
+
+function getSubscriptionCurrentPeriodEnd(subscription: Stripe.Subscription): Date | null {
+  const raw = (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end;
+  return unixToDate(raw);
+}
+
+function normalizePlan(value: string | null | undefined) {
+  if (value === "premium" || value === "business" || value === "trial") {
+    return value;
+  }
+  return "premium";
+}
 
 export async function POST(req: Request) {
   if (!stripe) {
@@ -33,25 +50,97 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log("STRIPE_CHECKOUT_COMPLETED", {
-          id: session.id,
-          customer: session.customer,
-          subscription: session.subscription,
-          plan: session.metadata?.plan || null,
-        });
+
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription?.id;
+
+        const customerId =
+          typeof session.customer === "string"
+            ? session.customer
+            : session.customer?.id;
+
+        if (session.mode === "subscription" && subscriptionId && customerId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+          await prisma.subscription.upsert({
+            where: {
+              stripeSubscriptionId: subscription.id,
+            },
+            update: {
+              stripeCustomerId: String(customerId),
+              plan: normalizePlan(
+                session.metadata?.plan ||
+                subscription.metadata?.plan
+              ),
+              status: subscription.status,
+              customerEmail:
+                session.customer_details?.email ||
+                session.customer_email ||
+                null,
+              currentPeriodEnd: getSubscriptionCurrentPeriodEnd(subscription),
+            },
+            create: {
+              stripeCustomerId: String(customerId),
+              stripeSubscriptionId: subscription.id,
+              plan: normalizePlan(
+                session.metadata?.plan ||
+                subscription.metadata?.plan
+              ),
+              status: subscription.status,
+              customerEmail:
+                session.customer_details?.email ||
+                session.customer_email ||
+                null,
+              currentPeriodEnd: getSubscriptionCurrentPeriodEnd(subscription),
+            },
+          });
+        }
+
         break;
       }
 
       case "customer.subscription.created":
-      case "customer.subscription.updated":
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription;
+
+        await prisma.subscription.upsert({
+          where: {
+            stripeSubscriptionId: subscription.id,
+          },
+          update: {
+            stripeCustomerId: String(subscription.customer),
+            plan: normalizePlan(subscription.metadata?.plan),
+            status: subscription.status,
+            currentPeriodEnd: getSubscriptionCurrentPeriodEnd(subscription),
+          },
+          create: {
+            stripeCustomerId: String(subscription.customer),
+            stripeSubscriptionId: subscription.id,
+            plan: normalizePlan(subscription.metadata?.plan),
+            status: subscription.status,
+            customerEmail: null,
+            currentPeriodEnd: getSubscriptionCurrentPeriodEnd(subscription),
+          },
+        });
+
+        break;
+      }
+
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log("STRIPE_SUBSCRIPTION_EVENT", {
-          type: event.type,
-          id: subscription.id,
-          status: subscription.status,
-          customer: subscription.customer,
+
+        await prisma.subscription.updateMany({
+          where: {
+            stripeSubscriptionId: subscription.id,
+          },
+          data: {
+            status: "canceled",
+            currentPeriodEnd: getSubscriptionCurrentPeriodEnd(subscription),
+          },
         });
+
         break;
       }
 
@@ -65,3 +154,4 @@ export async function POST(req: Request) {
     return new NextResponse("Webhook Error", { status: 400 });
   }
 }
+
