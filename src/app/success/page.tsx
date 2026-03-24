@@ -4,24 +4,76 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Navbar } from "@/components/ui/Navbar";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { normalizeAccess, setClientAccess } from "@/lib/access";
+import { InstantTalkAccess, normalizeAccess, setClientAccess } from "@/lib/access";
 
 export default function SuccessPage() {
   const [search, setSearch] = useState("");
+  const [verifiedPlan, setVerifiedPlan] = useState<InstantTalkAccess>(null);
+  const [verifying, setVerifying] = useState(true);
+  const [verificationError, setVerificationError] = useState("");
   const { t } = useLanguage();
 
   useEffect(() => {
     setSearch(window.location.search);
   }, []);
 
-  const plan = useMemo(() => {
-    const searchParams = new URLSearchParams(search);
-    return normalizeAccess(searchParams.get("plan")) || "premium";
-  }, [search]);
+  const searchParams = useMemo(() => new URLSearchParams(search), [search]);
+  const fallbackPlan = normalizeAccess(searchParams.get("plan")) || "premium";
+  const sessionId = searchParams.get("session_id");
 
   useEffect(() => {
-    setClientAccess(plan);
-  }, [plan]);
+    let cancelled = false;
+
+    async function verifySession() {
+      try {
+        if (!sessionId) {
+          if (!cancelled) {
+            setVerifiedPlan(fallbackPlan);
+          }
+          return;
+        }
+
+        const res = await fetch(`/api/stripe/session?session_id=${encodeURIComponent(sessionId)}`, {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data?.details || data?.error || "Session verification failed");
+        }
+
+        if (!cancelled) {
+          setVerifiedPlan(normalizeAccess(data?.plan) || fallbackPlan);
+        }
+      } catch (error) {
+        console.error("SUCCESS_SESSION_VERIFY_ERROR", error);
+
+        if (!cancelled) {
+          setVerificationError(
+            error instanceof Error ? error.message : "Unknown session verification error"
+          );
+          setVerifiedPlan(fallbackPlan);
+        }
+      } finally {
+        if (!cancelled) {
+          setVerifying(false);
+        }
+      }
+    }
+
+    void verifySession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, fallbackPlan]);
+
+  useEffect(() => {
+    if (!verifiedPlan) return;
+    setClientAccess(verifiedPlan);
+  }, [verifiedPlan]);
 
   return (
     <div className="min-h-screen bg-[#f6f9fc]">
@@ -42,8 +94,23 @@ export default function SuccessPage() {
           </p>
 
           <div className="mt-6 rounded-2xl border border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#0A2540]">
-            Plan active: <span className="font-semibold uppercase">{plan}</span>
+            {verifying ? (
+              <>Verification en cours...</>
+            ) : (
+              <>
+                Plan active:{" "}
+                <span className="font-semibold uppercase">
+                  {verifiedPlan || fallbackPlan}
+                </span>
+              </>
+            )}
           </div>
+
+          {verificationError ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {verificationError}
+            </div>
+          ) : null}
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row">
             <Link
