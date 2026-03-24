@@ -1,6 +1,7 @@
 export type InstantTalkAccess = "premium" | "business" | "trial" | null;
 
 export const ACCESS_COOKIE = "instanttalk_access";
+export const CUSTOMER_REF_COOKIE = "instanttalk_customer_ref";
 
 const ACCESS_VALUES = new Set(["premium", "business", "trial"]);
 
