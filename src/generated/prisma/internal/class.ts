@@ -20,7 +20,7 @@ const config: runtime.GetPrismaClientConfig = {
   "clientVersion": "7.4.2",
   "engineVersion": "94a226be1cf2967af2541cca5529f0f7ba866919",
   "activeProvider": "postgresql",
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n",
+  "inlineSchema": "// Prisma schema\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nmodel Subscription {\n  id                   String    @id @default(cuid())\n  stripeCustomerId     String    @unique\n  stripeSubscriptionId String    @unique\n  plan                 String\n  status               String\n  customerEmail        String?\n  currentPeriodEnd     DateTime?\n  createdAt            DateTime  @default(now())\n  updatedAt            DateTime  @updatedAt\n\n  @@index([plan])\n  @@index([status])\n}\n",
   "runtimeDataModel": {
     "models": {},
     "enums": {},
@@ -32,10 +32,10 @@ const config: runtime.GetPrismaClientConfig = {
   }
 }
 
-config.runtimeDataModel = JSON.parse("{\"models\":{},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"Subscription\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"stripeCustomerId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"stripeSubscriptionId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"plan\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"customerEmail\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"currentPeriodEnd\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
 config.parameterizationSchema = {
-  strings: JSON.parse("[]"),
-  graph: "AAAA"
+  strings: JSON.parse("[\"where\",\"Subscription.findUnique\",\"Subscription.findUniqueOrThrow\",\"orderBy\",\"cursor\",\"Subscription.findFirst\",\"Subscription.findFirstOrThrow\",\"Subscription.findMany\",\"data\",\"Subscription.createOne\",\"Subscription.createMany\",\"Subscription.createManyAndReturn\",\"Subscription.updateOne\",\"Subscription.updateMany\",\"Subscription.updateManyAndReturn\",\"create\",\"update\",\"Subscription.upsertOne\",\"Subscription.deleteOne\",\"Subscription.deleteMany\",\"having\",\"_count\",\"_min\",\"_max\",\"Subscription.groupBy\",\"Subscription.aggregate\",\"AND\",\"OR\",\"NOT\",\"id\",\"stripeCustomerId\",\"stripeSubscriptionId\",\"plan\",\"status\",\"customerEmail\",\"currentPeriodEnd\",\"createdAt\",\"updatedAt\",\"equals\",\"in\",\"notIn\",\"lt\",\"lte\",\"gt\",\"gte\",\"not\",\"contains\",\"startsWith\",\"endsWith\",\"set\"]"),
+  graph: "NQkQDBoAACkAMBsAAAQAEBwAACkAMB0BAAAAAR4BAAAAAR8BAAAAASABACoAISEBACoAISIBACsAISNAACwAISRAAC0AISVAAC0AIQEAAAABACABAAAAAQAgDBoAACkAMBsAAAQAEBwAACkAMB0BACoAIR4BACoAIR8BACoAISABACoAISEBACoAISIBACsAISNAACwAISRAAC0AISVAAC0AIQIiAAAuACAjAAAuACADAAAABAAgAwAABQAwBAAAAQAgAwAAAAQAIAMAAAUAMAQAAAEAIAMAAAAEACADAAAFADAEAAABACAJHQEAAAABHgEAAAABHwEAAAABIAEAAAABIQEAAAABIgEAAAABI0AAAAABJEAAAAABJUAAAAABAQgAAAkAIAkdAQAAAAEeAQAAAAEfAQAAAAEgAQAAAAEhAQAAAAEiAQAAAAEjQAAAAAEkQAAAAAElQAAAAAEBCAAACwAwAQgAAAsAMAkdAQAyACEeAQAyACEfAQAyACEgAQAyACEhAQAyACEiAQAzACEjQAA0ACEkQAA1ACElQAA1ACECAAAAAQAgCAAADgAgCR0BADIAIR4BADIAIR8BADIAISABADIAISEBADIAISIBADMAISNAADQAISRAADUAISVAADUAIQIAAAAEACAIAAAQACACAAAABAAgCAAAEAAgAwAAAAEAIA8AAAkAIBAAAA4AIAEAAAABACABAAAABAAgBRUAAC8AIBYAADEAIBcAADAAICIAAC4AICMAAC4AIAwaAAAaADAbAAAXABAcAAAaADAdAQAbACEeAQAbACEfAQAbACEgAQAbACEhAQAbACEiAQAcACEjQAAdACEkQAAeACElQAAeACEDAAAABAAgAwAAFgAwFAAAFwAgAwAAAAQAIAMAAAUAMAQAAAEAIAwaAAAaADAbAAAXABAcAAAaADAdAQAbACEeAQAbACEfAQAbACEgAQAbACEhAQAbACEiAQAcACEjQAAdACEkQAAeACElQAAeACEOFQAAIAAgFgAAKAAgFwAAKAAgJgEAAAABJwEAAAAEKAEAAAAEKQEAAAABKgEAAAABKwEAAAABLAEAAAABLQEAJwAhLgEAAAABLwEAAAABMAEAAAABDhUAACMAIBYAACYAIBcAACYAICYBAAAAAScBAAAABSgBAAAABSkBAAAAASoBAAAAASsBAAAAASwBAAAAAS0BACUAIS4BAAAAAS8BAAAAATABAAAAAQsVAAAjACAWAAAkACAXAAAkACAmQAAAAAEnQAAAAAUoQAAAAAUpQAAAAAEqQAAAAAErQAAAAAEsQAAAAAEtQAAiACELFQAAIAAgFgAAIQAgFwAAIQAgJkAAAAABJ0AAAAAEKEAAAAAEKUAAAAABKkAAAAABK0AAAAABLEAAAAABLUAAHwAhCxUAACAAIBYAACEAIBcAACEAICZAAAAAASdAAAAABChAAAAABClAAAAAASpAAAAAAStAAAAAASxAAAAAAS1AAB8AIQgmAgAAAAEnAgAAAAQoAgAAAAQpAgAAAAEqAgAAAAErAgAAAAEsAgAAAAEtAgAgACEIJkAAAAABJ0AAAAAEKEAAAAAEKUAAAAABKkAAAAABK0AAAAABLEAAAAABLUAAIQAhCxUAACMAIBYAACQAIBcAACQAICZAAAAAASdAAAAABShAAAAABSlAAAAAASpAAAAAAStAAAAAASxAAAAAAS1AACIAIQgmAgAAAAEnAgAAAAUoAgAAAAUpAgAAAAEqAgAAAAErAgAAAAEsAgAAAAEtAgAjACEIJkAAAAABJ0AAAAAFKEAAAAAFKUAAAAABKkAAAAABK0AAAAABLEAAAAABLUAAJAAhDhUAACMAIBYAACYAIBcAACYAICYBAAAAAScBAAAABSgBAAAABSkBAAAAASoBAAAAASsBAAAAASwBAAAAAS0BACUAIS4BAAAAAS8BAAAAATABAAAAAQsmAQAAAAEnAQAAAAUoAQAAAAUpAQAAAAEqAQAAAAErAQAAAAEsAQAAAAEtAQAmACEuAQAAAAEvAQAAAAEwAQAAAAEOFQAAIAAgFgAAKAAgFwAAKAAgJgEAAAABJwEAAAAEKAEAAAAEKQEAAAABKgEAAAABKwEAAAABLAEAAAABLQEAJwAhLgEAAAABLwEAAAABMAEAAAABCyYBAAAAAScBAAAABCgBAAAABCkBAAAAASoBAAAAASsBAAAAASwBAAAAAS0BACgAIS4BAAAAAS8BAAAAATABAAAAAQwaAAApADAbAAAEABAcAAApADAdAQAqACEeAQAqACEfAQAqACEgAQAqACEhAQAqACEiAQArACEjQAAsACEkQAAtACElQAAtACELJgEAAAABJwEAAAAEKAEAAAAEKQEAAAABKgEAAAABKwEAAAABLAEAAAABLQEAKAAhLgEAAAABLwEAAAABMAEAAAABCyYBAAAAAScBAAAABSgBAAAABSkBAAAAASoBAAAAASsBAAAAASwBAAAAAS0BACYAIS4BAAAAAS8BAAAAATABAAAAAQgmQAAAAAEnQAAAAAUoQAAAAAUpQAAAAAEqQAAAAAErQAAAAAEsQAAAAAEtQAAkACEIJkAAAAABJ0AAAAAEKEAAAAAEKUAAAAABKkAAAAABK0AAAAABLEAAAAABLUAAIQAhAAAAAAExAQAAAAEBMQEAAAABATFAAAAAAQExQAAAAAEAAAAAAxUABhYABxcACAAAAAMVAAYWAAcXAAgBAgECAwEFBgEGBwEHCAEJCgEKDAILDQMMDwENEQIOEgQREwESFAETFQIYGAUZGQk"
 }
 
 async function decodeBase64AsWasm(wasmBase64: string): Promise<WebAssembly.Module> {
@@ -70,8 +70,8 @@ export interface PrismaClientConstructor {
    * const prisma = new PrismaClient({
    *   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })
    * })
-   * // Fetch zero or more Users
-   * const users = await prisma.user.findMany()
+   * // Fetch zero or more Subscriptions
+   * const subscriptions = await prisma.subscription.findMany()
    * ```
    * 
    * Read more in our [docs](https://pris.ly/d/client).
@@ -94,8 +94,8 @@ export interface PrismaClientConstructor {
  * const prisma = new PrismaClient({
  *   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })
  * })
- * // Fetch zero or more Users
- * const users = await prisma.user.findMany()
+ * // Fetch zero or more Subscriptions
+ * const subscriptions = await prisma.subscription.findMany()
  * ```
  * 
  * Read more in our [docs](https://pris.ly/d/client).
@@ -188,7 +188,15 @@ export interface PrismaClient<
     extArgs: ExtArgs
   }>>
 
-    
+      /**
+   * `prisma.subscription`: Exposes CRUD operations for the **Subscription** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Subscriptions
+    * const subscriptions = await prisma.subscription.findMany()
+    * ```
+    */
+  get subscription(): Prisma.SubscriptionDelegate<ExtArgs, { omit: OmitOpts }>;
 }
 
 export function getPrismaClientClass(): PrismaClientConstructor {
