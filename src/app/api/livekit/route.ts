@@ -1,8 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
+import { ACCESS_COOKIE, hasServerAccess } from "@/lib/server-access";
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    const access = req.cookies.get(ACCESS_COOKIE)?.value;
+
+    if (!hasServerAccess(access)) {
+      return NextResponse.json(
+        { error: "Access required" },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
 
     const roomName = body?.roomName;
@@ -27,6 +39,7 @@ export async function POST(req: NextRequest) {
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity: userId,
+      name: userId,
     });
 
     at.addGrant({
