@@ -1,4 +1,4 @@
-import { AccessToken } from "livekit-server-sdk";
+ï»¿import { AccessToken } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { ACCESS_COOKIE, hasServerAccess } from "@/lib/server-access";
 
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   if (!room) {
     return NextResponse.json(
-      { error: 'Le paramètre "room" est requis' },
+      { error: 'Missing "room" query parameter' },
       { status: 400 }
     );
   }
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   if (!apiKey || !apiSecret) {
     return NextResponse.json(
-      { error: "Configuration serveur LiveKit manquante" },
+      { error: "Missing LiveKit server configuration" },
       { status: 500 }
     );
   }
