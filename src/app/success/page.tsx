@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Navbar } from "@/components/ui/Navbar";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { InstantTalkAccess, normalizeAccess, setClientAccess } from "@/lib/access";
+import {
+  InstantTalkAccess,
+  normalizeAccess,
+  setClientAccess,
+  setCustomerRef,
+} from "@/lib/access";
 
 export default function SuccessPage() {
   const [search, setSearch] = useState("");
@@ -46,6 +51,7 @@ export default function SuccessPage() {
 
         if (!cancelled) {
           setVerifiedPlan(normalizeAccess(data?.plan) || fallbackPlan);
+          setCustomerRef(typeof data?.customerRef === "string" ? data.customerRef : null);
         }
       } catch (error) {
         console.error("SUCCESS_SESSION_VERIFY_ERROR", error);

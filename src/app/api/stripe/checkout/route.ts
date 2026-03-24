@@ -29,6 +29,10 @@ function isCheckoutPlan(value: string): value is CheckoutPlan {
   return value === "premium" || value === "business";
 }
 
+function createCustomerRef() {
+  return `itr_${crypto.randomUUID()}`;
+}
+
 export async function POST(req: Request) {
   try {
     if (!stripe) {
@@ -50,10 +54,12 @@ export async function POST(req: Request) {
 
     const plan = PLAN_CONFIG[rawPlan];
     const origin = new URL(req.url).origin;
+    const customerRef = createCustomerRef();
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
+      client_reference_id: customerRef,
       line_items: [
         {
           price_data: {
@@ -72,6 +78,13 @@ export async function POST(req: Request) {
       ],
       metadata: {
         plan: rawPlan,
+        customerRef,
+      },
+      subscription_data: {
+        metadata: {
+          plan: rawPlan,
+          customerRef,
+        },
       },
       success_url: `${origin}/success?plan=${rawPlan}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/pricing`,
@@ -81,6 +94,7 @@ export async function POST(req: Request) {
       url: session.url,
       sessionId: session.id,
       plan: rawPlan,
+      customerRef,
     });
   } catch (error) {
     console.error("STRIPE_CHECKOUT_ERROR", error);

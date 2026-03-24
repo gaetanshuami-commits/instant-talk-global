@@ -45,9 +45,7 @@ export async function GET(req: NextRequest) {
         ? session.subscription
         : session.subscription?.id;
 
-    const rawPlan =
-      session.metadata?.plan ||
-      null;
+    const rawPlan = session.metadata?.plan || null;
 
     const dbSubscription = subscriptionId
       ? await prisma.subscription.findUnique({
@@ -67,6 +65,10 @@ export async function GET(req: NextRequest) {
         typeof session.customer === "string"
           ? session.customer
           : session.customer?.id || null,
+      customerRef:
+        session.client_reference_id ||
+        session.metadata?.customerRef ||
+        null,
       subscriptionId: subscriptionId || null,
       plan,
       dbStatus: dbSubscription?.status || null,
