@@ -14,11 +14,11 @@ import {
   upsertParticipantLanguage
 } from "@/lib/realtime/participant-language-registry";
 import {
-  decodeRoomVoiceIntentMessage,
-  encodeRoomVoiceIntentMessage
+  decodeRoomVoiceIntentMessage
 } from "@/lib/realtime/room-voice-intent-channel";
 
 export default function RoomPage() {
+
   const params = useParams();
   const roomId = String(params.roomId || "");
 
@@ -27,619 +27,232 @@ export default function RoomPage() {
   const [videoTrack, setVideoTrack] = useState<any>(null);
 
   const [targetLang, setTargetLang] = useState("EN");
+
   const [liveCaption, setLiveCaption] = useState("Live captions are ready.");
   const [translatedCaption, setTranslatedCaption] = useState("Translated captions will appear here.");
-  const [captionsRunning, setCaptionsRunning] = useState(false);
-  const [captionSpeaker] = useState("You");
+
   const [translationLoading, setTranslationLoading] = useState(false);
   const [voiceLoading, setVoiceLoading] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-const [audioReady, setAudioReady] = useState(false);
 
+  const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const voiceQueueRef = useRef<VoiceQueue | null>(null);
-  const [participantLangs, setParticipantLangs] = useState<Record<string, string>>({});
-  const [activeSpeakerId, setActiveSpeakerId] = useState("local");
-  const lastBroadcastTranscriptRef = useRef("");
-  const [chatInput, setChatInput] = useState("");
-  const [chatReply, setChatReply] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatError, setChatError] = useState("");
-  const lastVoiceIntentRef = useRef("");
 
-  const languageOptions = [
-    { code: "FR", label: "Francais" },
-    { code: "EN", label: "English" },
-    { code: "DE", label: "Deutsch" },
-    { code: "ES", label: "Espanol" },
-    { code: "IT", label: "Italiano" },
-    { code: "NL", label: "Nederlands" },
-    { code: "PT", label: "Portugues" },
-    { code: "AR", label: "Arabic" },
-    { code: "ZH", label: "Chinese" },
-    { code: "JA", label: "Japanese" }
-  ];
-
-  const voiceMap: Record<string, string> = {
-    FR: "fr-FR-DeniseNeural",
-    EN: "en-US-JennyNeural",
-    DE: "de-DE-KatjaNeural",
-    ES: "es-ES-ElviraNeural",
-    IT: "it-IT-ElsaNeural",
-    NL: "nl-NL-ColetteNeural",
-    PT: "pt-PT-RaquelNeural",
-    AR: "ar-SA-ZariyahNeural",
-    ZH: "zh-CN-XiaoxiaoNeural",
-    JA: "ja-JP-NanamiNeural"
+  const voiceMap: Record<string,string> = {
+    FR:"fr-FR-DeniseNeural",
+    EN:"en-US-JennyNeural",
+    DE:"de-DE-KatjaNeural",
+    ES:"es-ES-ElviraNeural",
+    IT:"it-IT-ElsaNeural",
+    NL:"nl-NL-ColetteNeural",
+    PT:"pt-PT-RaquelNeural",
+    AR:"ar-SA-ZariyahNeural",
+    ZH:"zh-CN-XiaoxiaoNeural",
+    JA:"ja-JP-NanamiNeural"
   };
 
-  useEffect(() => {
-    async function connectRoom() {
-      try {
-        const userId = "user-" + Math.floor(Math.random() * 9999);
+  useEffect(()=>{
 
-        const res = await fetch("/api/livekit", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            roomName: roomId,
-            userId
-          })
-        });
+    async function connectRoom(){
 
-        const data = await res.json();
+      const userId="user-"+Math.floor(Math.random()*9999);
 
-        await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, data.token);
-        await room.localParticipant.enableCameraAndMicrophone();
+      const res=await fetch("/api/livekit",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json"},
+        body:JSON.stringify({
+          roomName:roomId,
+          userId
+        })
+      });
 
-        const tracks = room.localParticipant.videoTrackPublications;
+      const data=await res.json();
 
-        tracks.forEach((pub) => {
-          if (pub.track && pub.track.kind === Track.Kind.Video) {
-            setVideoTrack(pub.track);
-          }
-        });
+      await room.connect(
+        process.env.NEXT_PUBLIC_LIVEKIT_URL!,
+        data.token
+      );
 
-        setConnected(true);
-      } catch (error) {
-        console.error("ROOM ERROR", error);
-      }
+      await room.localParticipant.enableCameraAndMicrophone();
+
+      room.localParticipant.videoTrackPublications.forEach(pub=>{
+        if(pub.track && pub.track.kind===Track.Kind.Video){
+          setVideoTrack(pub.track);
+        }
+      });
+
+      voiceQueueRef.current=new VoiceQueue({
+        room,
+        defaultLang:targetLang,
+        defaultVoice:voiceMap[targetLang],
+        onStart:()=>setVoiceLoading(true),
+        onEnd:()=>setVoiceLoading(false),
+        onError:()=>setVoiceLoading(false)
+      });
+
+      setConnected(true);
+
     }
 
     connectRoom();
 
-    return () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
+  },[roomId]);
 
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
+  useEffect(()=>{
 
-      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({ type: "close" }));
-        socketRef.current.close();
-      }
+    if(!videoTrack) return;
 
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+    const el=document.getElementById("local-video") as HTMLVideoElement;
 
-      if (audioUrl) { URL.revokeObjectURL(audioUrl); }
-
-      room.disconnect();
-    };
-  }, [room, roomId, audioUrl]);
-
-  useEffect(() => {
-    if (!videoTrack) return;
-
-    const el = document.getElementById("local-video") as HTMLVideoElement | null;
-    if (!el) return;
+    if(!el) return;
 
     videoTrack.attach(el);
 
-    return () => {
-      videoTrack.detach(el);
-    };
-  }, [videoTrack]);
+    return ()=>videoTrack.detach(el);
 
-  useEffect(() => {
-    if (!connected) return;
+  },[videoTrack]);
 
-    const localIdentity =
-      room.localParticipant.identity ||
-      room.localParticipant.sid ||
-      "local";
+  useEffect(()=>{
 
-    setParticipantLangs((current) =>
-      upsertParticipantLanguage(current, localIdentity, targetLang)
-    );
+    if(!liveCaption) return;
 
-    void room.localParticipant.publishData(
-      encodeParticipantLanguageMessage({
-        type: "participant-language",
-        participantId: localIdentity,
-        targetLang,
-        at: Date.now()
-      }),
-      { reliable: true }
-    ).catch((error) => {
-      console.error("PARTICIPANT_LANGUAGE_PUBLISH_ERROR", error);
-    });
-  }, [connected, room, targetLang]);
+    async function translate(){
 
-  useEffect(() => {
-    if (!connected) return;
+      try{
 
-    const onDataReceived = (payload: Uint8Array, participant?: any) => {
-      const languageMessage = decodeParticipantLanguageMessage(payload);
-
-      if (languageMessage) {
-        setParticipantLangs((current) =>
-          upsertParticipantLanguage(
-            current,
-            languageMessage.participantId,
-            languageMessage.targetLang
-          )
-        );
-        return;
-      }
-
-      const voiceIntent = decodeRoomVoiceIntentMessage(payload);
-
-      if (!voiceIntent) return;
-      if (voiceIntent.participantId === (room.localParticipant.identity || room.localParticipant.sid || "local")) return;
-      if (voiceIntent.targetLang !== targetLang) return;
-
-      const dedupeKey = `${voiceIntent.participantId}:${voiceIntent.at}:${voiceIntent.text}`;
-      if (lastVoiceIntentRef.current === dedupeKey) return;
-      lastVoiceIntentRef.current = dedupeKey;
-
-      setActiveSpeakerId(voiceIntent.participantId);
-      setLiveCaption(voiceIntent.text);
-
-      voiceQueueRef.current?.enqueue({
-        text: voiceIntent.text,
-        lang: voiceIntent.targetLang,
-        voice: voiceIntent.voiceName
-      });
-    };
-
-    const onParticipantDisconnected = (participant: any) => {
-      const participantId = participant?.identity || participant?.sid;
-      if (!participantId) return;
-
-      setParticipantLangs((current) =>
-        removeParticipantLanguage(current, participantId)
-      );
-    };
-
-    room.on("dataReceived", onDataReceived);
-    room.on("participantDisconnected", onParticipantDisconnected);
-
-    return () => {
-      room.off("dataReceived", onDataReceived);
-      room.off("participantDisconnected", onParticipantDisconnected);
-    };
-  }, [connected, room, targetLang]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function translateCaption() {
-      try {
-        if (
-          !liveCaption ||
-          liveCaption === "Live captions are ready." ||
-          liveCaption === "Listening..." ||
-          liveCaption === "Opening captions..."
-        ) {
-          return;
-        }
-
-        if (targetLang === "FR") {
+        if(targetLang==="FR"){
           setTranslatedCaption(liveCaption);
           return;
         }
 
         setTranslationLoading(true);
 
-        const res = await fetch("/api/translate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            text: liveCaption,
-            sourceLang: "FR",
+        const res=await fetch("/api/translate",{
+          method:"POST",
+          headers:{ "Content-Type":"application/json"},
+          body:JSON.stringify({
+            text:liveCaption,
+            sourceLang:"FR",
             targetLang
           })
         });
 
-        const data = await res.json();
+        const data=await res.json();
 
-        if (!res.ok) {
-          throw new Error(data?.details || data?.error || "Translation failed");
-        }
+        setTranslatedCaption(data.translatedText);
 
-        if (!cancelled) {
-          setTranslatedCaption(data?.translatedText || liveCaption);
-        }
-      } catch (error) {
-        console.error("ROOM_TRANSLATION_ERROR", error);
+        voiceQueueRef.current?.enqueue({
+          text:data.translatedText,
+          lang:targetLang,
+          voice:voiceMap[targetLang]
+        });
 
-        if (!cancelled) {
-          setTranslatedCaption(liveCaption);
-        }
-      } finally {
-        if (!cancelled) {
-          setTranslationLoading(false);
-        }
       }
+      finally{
+        setTranslationLoading(false);
+      }
+
     }
 
-    translateCaption();
+    translate();
 
-    return () => {
-      cancelled = true;
+  },[liveCaption,targetLang]);
+
+  async function startCaptions(){
+
+    const stream=await navigator.mediaDevices.getUserMedia({
+      audio:true
+    });
+
+    mediaStreamRef.current=stream;
+
+    const recorder=new MediaRecorder(stream,{
+      mimeType:"audio/webm"
+    });
+
+    mediaRecorderRef.current=recorder;
+
+    const socket=new WebSocket("ws://127.0.0.1:8787");
+
+    socketRef.current=socket;
+
+    socket.onmessage=(event)=>{
+
+      const payload=JSON.parse(event.data);
+
+      if(
+        payload.type==="transcript"
+        ||
+        payload.type==="interim"
+      ){
+
+        const text=payload.transcript?.trim();
+
+        if(text){
+          setLiveCaption(text);
+        }
+
+      }
+
     };
-  }, [liveCaption, targetLang]);
 
-  async function startLiveCaptions() {
-    try {
-      if (captionsRunning) return;
+    recorder.ondataavailable=async(e)=>{
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      if(
+        e.data.size>800
+        &&
+        socket.readyState===WebSocket.OPEN
+      ){
 
-      mediaStreamRef.current = stream;
+        socket.send(await e.data.arrayBuffer());
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = async (event) => {
-        try {
-          if (!event.data || event.data.size < 800) return;
-          if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
-
-          const arrayBuffer = await event.data.arrayBuffer();
-          socketRef.current.send(arrayBuffer);
-        } catch (error) {
-          console.error("RECORDER_CHUNK_ERROR", error);
-        }
-      };
-
-      const socket = new WebSocket("ws://127.0.0.1:8787");
-      socketRef.current = socket;
-
-      socket.onopen = () => {
-        console.log("CAPTIONS_BROWSER_SOCKET_OPEN");
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-
-          if (payload?.type === "status") {
-            if (
-              payload?.value === "deepgram-open" &&
-              mediaRecorderRef.current &&
-              mediaRecorderRef.current.state === "inactive"
-            ) {
-              mediaRecorderRef.current.start(250);
-              setCaptionsRunning(true);
-              setLiveCaption("Listening...");
-              setTranslatedCaption(targetLang === "FR" ? "Listening..." : "Translating...");
-            }
-            return;
-          }
-
-          if (payload?.type === "error") {
-            console.error("BRIDGE_ERROR", payload?.message);
-            setLiveCaption("Live captions bridge error.");
-            return;
-          }
-
-          if (payload?.type === "transcript") {
-            const transcript = String(payload?.transcript || "").trim();
-
-            if (transcript) {
-              setLiveCaption(transcript);
-
-              if (targetLang === "FR") {
-                setTranslatedCaption(transcript);
-              }
-            }
-          }
-        } catch (error) {
-          console.error("SOCKET_MESSAGE_ERROR", error);
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error("SOCKET_ERROR", error);
-        setLiveCaption("Live captions connection failed.");
-      };
-
-      socket.onclose = () => {
-        setCaptionsRunning(false);
-      };
-
-      setLiveCaption("Opening captions...");
-      setTranslatedCaption(targetLang === "FR" ? "Opening captions..." : "Preparing translation...");
-    } catch (error) {
-      console.error("START_CAPTIONS_ERROR", error);
-      setLiveCaption("Unable to start live captions.");
-      setTranslatedCaption("Unable to start translation.");
-    }
-  }
-
-  function stopLiveCaptions() {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-    }
-
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: "close" }));
-      socketRef.current.close();
-    }
-
-    mediaRecorderRef.current = null;
-    mediaStreamRef.current = null;
-    socketRef.current = null;
-    setCaptionsRunning(false);
-  }
-
-  async function sendAiMessage() {
-    try {
-      const message = chatInput.trim();
-
-      if (!message) return;
-
-      setChatLoading(true);
-      setChatError("");
-
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          message,
-          activeLanguage: targetLang
-        })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.details || data?.error || "AI chat failed");
       }
 
-      setChatReply(String(data?.reply || ""));
-    } catch (error) {
-      console.error("ROOM_AI_CHAT_ERROR", error);
-      setChatError(error instanceof Error ? error.message : "Unknown AI chat error");
-    } finally {
-      setChatLoading(false);
-    }
+    };
+
+    recorder.start(250);
+
   }
 
-  async function playTranslatedVoice() {
-    try {
-      const text = translatedCaption?.trim();
+  return(
 
-      if (
-        !text ||
-        text === "Translated captions will appear here." ||
-        text === "Translating..." ||
-        text === "Preparing translation..." ||
-        text === "Unable to start translation."
-      ) {
-        return;
-      }
-
-      setVoiceLoading(true);
-
-      const voiceName = voiceMap[targetLang] || voiceMap.EN;
-
-      const res = await fetch("/api/azure-tts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          text,
-          voiceName
-        })
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.details || data?.error || "Azure TTS failed");
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      if (audioUrl) { URL.revokeObjectURL(audioUrl); }
-
-      setAudioReady(false);
-setAudioUrl(url);
-
-setTimeout(async () => {
-  try {
-    if (audioRef.current) {
-      audioRef.current.src = url;
-      audioRef.current.currentTime = 0;
-      audioRef.current.muted = false;
-      audioRef.current.volume = 1;
-      audioRef.current.load();
-      await audioRef.current.play();
-      setAudioReady(true);
-    }
-  } catch (error) {
-    console.error("AUDIO_PLAYBACK_ERROR", error);
-  } finally {
-    setVoiceLoading(false);
-  }
-}, 100);
-    } catch (error) {
-      console.error("PLAY_TRANSLATED_VOICE_ERROR", error);
-      setVoiceLoading(false);
-    }
-  }
-
-  return (
     <div className="min-h-screen bg-black text-white p-6">
-      <h1 className="text-3xl font-bold">Room: {roomId}</h1>
 
-      {!connected && (
-        <p className="mt-4 text-gray-400">Connecting camera...</p>
-      )}
+      <h1 className="text-3xl font-bold">
+        Room: {roomId}
+      </h1>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <div>
-          <div className="h-[300px] w-[520px] overflow-hidden rounded-2xl border border-white/10 bg-black">
-            <video
-              id="local-video"
-              autoPlay
-              muted
-              playsInline
-              className="h-full w-full object-cover object-center scale-x-[-1]"
-            />
-          </div>
+      <div className="mt-6">
+
+        <div className="h-[300px] w-[520px] rounded-2xl overflow-hidden border border-white/10">
+
+          <video
+            id="local-video"
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover scale-x-[-1]"
+          />
+
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#0b1220] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-indigo-300">
-              Live Captions
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
-              <div className="mb-2 px-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                Output language
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {languageOptions.map((lang) => (
-                  <button
-                    key={lang.code}
-                    type="button"
-                    onClick={() => setTargetLang(lang.code)}
-                    className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                      targetLang === lang.code
-                        ? "bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,91,255,0.35)]"
-                        : "bg-white/5 text-slate-300 hover:bg-white/10"
-                    }`}
-                  >
-                    {lang.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-4 flex gap-3">
-              <button
-                type="button"
-                onClick={startLiveCaptions}
-                disabled={captionsRunning}
-                className="rounded-full bg-indigo-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                Start live captions
-              </button>
-
-              <button
-                type="button"
-                onClick={stopLiveCaptions}
-                disabled={!captionsRunning}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                Stop
-              </button>
-            </div>
-
-            <div className="mt-4 text-sm text-slate-400">
-              Speaker: {activeSpeakerId}
-            </div>
-
-            <div className="mt-4 min-h-[120px] rounded-xl border border-white/10 bg-black/30 p-4 text-sm leading-7 text-white">
-              {liveCaption}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-indigo-400/20 bg-[#10162a] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs uppercase tracking-[0.2em] text-indigo-300">
-                Translated Captions
-              </div>
-              <div className="rounded-full border border-indigo-400/20 bg-indigo-500/10 px-3 py-1 text-[11px] font-semibold text-indigo-200">
-                {targetLang}
-              </div>
-            </div>
-
-            <div className="mt-4 min-h-[120px] rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4 text-sm leading-7 text-white">
-              {translationLoading ? "Translating..." : translatedCaption}
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={playTranslatedVoice}
-                disabled={voiceLoading || translationLoading}
-                className="rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                {voiceLoading ? "Generating voice..." : audioReady ? "Replay translated voice" : "Play translated voice"}
-              </button>
-
-              <audio
-  ref={audioRef}
-  controls
-  preload="auto"
-  src={audioUrl ?? undefined}
-  onCanPlay={() => setAudioReady(true)}
-  className="w-full"
-/>
-            </div>
-          </div>
-        </aside>
       </div>
+
+      <button
+        onClick={startCaptions}
+        className="mt-6 px-4 py-2 bg-indigo-500 rounded-full"
+      >
+        Start captions
+      </button>
+
+      <div className="mt-6">
+        {translationLoading?"Translating...":translatedCaption}
+      </div>
+
     </div>
+
   );
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
