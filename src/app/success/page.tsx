@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -51,7 +51,15 @@ export default function SuccessPage() {
 
         if (!cancelled) {
           setVerifiedPlan(normalizeAccess(data?.plan) || fallbackPlan);
-          setCustomerRef(typeof data?.customerRef === "string" ? data.customerRef : null);
+
+          const stableCustomerIdentity =
+            typeof data?.customerId === "string" && data.customerId.trim()
+              ? data.customerId
+              : typeof data?.customerRef === "string" && data.customerRef.trim()
+                ? data.customerRef
+                : null;
+
+          setCustomerRef(stableCustomerIdentity);
         }
       } catch (error) {
         console.error("SUCCESS_SESSION_VERIFY_ERROR", error);

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/ui/Navbar";
@@ -105,22 +105,22 @@ export default function HomePage() {
 
                   <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/20 bg-white/92 p-5 shadow-xl backdrop-blur">
                     <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#635bff]">
-                      Traduction vocale instantanée • voix naturelle
+                      Traduction vocale instantanÃ©e â€¢ voix naturelle
                     </div>
                     <div className="mt-3 text-sm font-semibold text-slate-500">
-                      Speaker • Français
+                      Speaker â€¢ FranÃ§ais
                     </div>
                     <div className="mt-1 text-lg font-semibold text-[#0a2540]">
-                      Bonjour, nous lançons le projet aujourd’hui.
+                      Bonjour, nous lanÃ§ons le projet aujourdâ€™hui.
                     </div>
                     <div className="mt-1 text-sm font-semibold text-[#635bff]">
                       Hello, we are launching the project today.
                     </div>
                     <div className="mt-1 text-sm font-semibold text-emerald-600">
-                      今日はプロジェクトを開始します。
+                      ä»Šæ—¥ã¯ãƒ—ãƒ­ã‚¸ã‚§ã‚¯ãƒˆã‚’é–‹å§‹ã—ã¾ã™ã€‚
                     </div>
                     <div className="mt-1 text-sm font-semibold text-fuchsia-600">
-                      نطلق المشروع اليوم
+                      Ù†Ø·Ù„Ù‚ Ø§Ù„Ù…Ø´Ø±ÙˆØ¹ Ø§Ù„ÙŠÙˆÙ…
                     </div>
                   </div>
                 </div>
@@ -184,3 +184,5 @@ function FeatureCard({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
+
+

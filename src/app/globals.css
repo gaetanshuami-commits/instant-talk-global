@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 html {
   scroll-behavior: smooth;
@@ -160,3 +160,10 @@ body {
   transform: translateY(-2px) scale(1.01);
   box-shadow: 0 22px 40px -24px rgba(10,37,64,0.30);
 }
+
+
+
+
+/* Fix LiveKit Camera Zoom */
+video { object-fit: contain !important; }
+

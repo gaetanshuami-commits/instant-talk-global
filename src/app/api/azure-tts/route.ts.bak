@@ -71,11 +71,7 @@ export async function POST(request: NextRequest) {
 
     if (!key || !region) {
       return NextResponse.json(
-        {
-          error: "Azure credentials not configured",
-          hasKey: Boolean(key),
-          hasRegion: Boolean(region),
-        },
+        { error: "Azure credentials not configured" },
         { status: 500 }
       );
     }
@@ -83,7 +79,7 @@ export async function POST(request: NextRequest) {
     const locale = inferLocaleFromVoice(voiceName);
 
     const ssml = `
-<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${locale}">
+<speak version="1.0" xml:lang="${locale}">
   <voice name="${voiceName}">
     ${escapeXml(text)}
   </voice>
@@ -132,13 +128,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[Azure TTS Route] Error:", error);
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
 }
-
-

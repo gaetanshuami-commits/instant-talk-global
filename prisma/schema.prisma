@@ -1,12 +1,11 @@
-// Prisma schema
-
-generator client {
+﻿generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Subscription {
@@ -22,4 +21,70 @@ model Subscription {
 
   @@index([plan])
   @@index([status])
+}
+
+model Meeting {
+  id          String            @id @default(cuid())
+  title       String
+  description String?
+  hostEmail   String
+  roomId      String            @unique
+  inviteToken String            @unique
+  startsAt    DateTime
+  endsAt      DateTime
+  timezone    String            @default("Europe/Paris")
+  status      MeetingStatus     @default(SCHEDULED)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  invitees    MeetingInvite[]
+  reminders   MeetingReminder[]
+
+  @@index([startsAt])
+  @@index([endsAt])
+  @@index([status])
+}
+
+model MeetingInvite {
+  id        String       @id @default(cuid())
+  meetingId String
+  email     String
+  name      String?
+  status    InviteStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  meeting   Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, email])
+  @@index([email])
+}
+
+model MeetingReminder {
+  id        String          @id @default(cuid())
+  meetingId String
+  remindAt  DateTime
+  sentAt    DateTime?
+  channel   ReminderChannel @default(EMAIL)
+  createdAt DateTime        @default(now())
+  meeting   Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([remindAt])
+  @@index([sentAt])
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum InviteStatus {
+  PENDING
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
+enum ReminderChannel {
+  EMAIL
 }

@@ -1,11 +1,12 @@
-import { LocalAudioTrack, Room } from "livekit-client";
+﻿import { LocalAudioTrack, Room } from "livekit-client";
 
 export async function publishTranslatedAudioTrack(
   room: Room,
   audioBuffer: ArrayBuffer
 ) {
   const AudioContextClass =
-    window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
   if (!AudioContextClass) {
     throw new Error("AudioContext is not supported in this browser.");

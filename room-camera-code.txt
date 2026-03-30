@@ -1,0 +1,37 @@
+﻿import { useLocalCamera } from '@/lib/realtime/use-local-camera';
+
+// Dans RoomContent() :
+
+const { videoRef, cameraReady } = useLocalCamera();
+
+// Dans le JSX, remplacer le rendu de la caméra locale par :
+
+<div className="flex-1 relative bg-black rounded-xl overflow-hidden shadow-2xl">
+  {localParticipant ? (
+    <>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-cover"
+        style={{ transform: 'none' }}
+      />
+      {!cameraReady && (
+        <div className="absolute inset-0 bg-slate-800 flex items-center justify-center">
+          <p className="text-gray-400">Camera loading...</p>
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-24 h-24 bg-slate-600 rounded-full mx-auto mb-4"></div>
+        <p className="text-gray-400">Camera off</p>
+      </div>
+    </div>
+  )}
+  <div className="absolute bottom-4 left-4 px-4 py-2 bg-black/70 rounded-full text-sm font-medium">
+    You (Host)
+  </div>
+</div>

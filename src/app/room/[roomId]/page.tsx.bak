@@ -1,10 +1,9 @@
-﻿"use client";
+"use client";
 
 import {
   Room,
   RoomEvent,
   Track,
-  VideoPresets,
   createLocalAudioTrack,
   createLocalVideoTrack,
   type LocalAudioTrack,
@@ -71,8 +70,6 @@ export default function RoomPage() {
   const remoteGridRef = useRef<HTMLDivElement | null>(null);
   const localVideoTrackRef = useRef<LocalVideoTrack | null>(null);
   const localAudioTrackRef = useRef<LocalAudioTrack | null>(null);
-  const startedRef = useRef(false);
-  const userIdRef = useRef("");
 
   const [connected, setConnected] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
@@ -82,20 +79,6 @@ export default function RoomPage() {
 
   useEffect(() => {
     let mounted = true;
-
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    if (!userIdRef.current) {
-      const stored = window.sessionStorage.getItem("instant-talk-user-id");
-      if (stored) {
-        userIdRef.current = stored;
-      } else {
-        const generated = "user-" + Math.random().toString(36).slice(2, 10);
-        userIdRef.current = generated;
-        window.sessionStorage.setItem("instant-talk-user-id", generated);
-      }
-    }
 
     function refreshRemoteCount() {
       if (!remoteGridRef.current) return;
@@ -123,7 +106,7 @@ export default function RoomPage() {
       videoEl.style.width = "100%";
       videoEl.style.height = "100%";
       videoEl.style.display = "block";
-      videoEl.style.objectFit = "contain"; // Correction : Anti-zoom
+      videoEl.style.objectFit = "contain";
       videoEl.style.transform = "none";
 
       tile.appendChild(videoEl);
@@ -154,11 +137,6 @@ export default function RoomPage() {
     function detachRemote(publication?: RemoteTrackPublication) {
       if (!publication) return;
 
-      // Correction : Destruction propre de la caméra fantôme
-      if (publication.track) {
-          publication.track.detach().forEach((el) => el.remove());
-      }
-
       const suffix = `-${publication.trackSid}`;
       document.querySelectorAll(`[id$="${suffix}"]`).forEach((node) => {
         try {
@@ -183,7 +161,7 @@ export default function RoomPage() {
         },
         body: JSON.stringify({
           roomName: roomId,
-          userId: userIdRef.current,
+          userId: "user-" + Math.random().toString(36).slice(2, 10),
         }),
       });
 
@@ -194,11 +172,23 @@ export default function RoomPage() {
         tokenData.token
       );
 
-      // Correction : 1080p forcé
       const videoTrack = await createLocalVideoTrack({
         facingMode: "user",
-        resolution: VideoPresets.h1080.resolution,
+        resolution: {
+          width: 1920,
+          height: 1080,
+          frameRate: 30,
+        },
       });
+
+      try {
+        await videoTrack.mediaStreamTrack.applyConstraints({
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, min: 24, max: 30 },
+          facingMode: "user",
+        });
+      } catch {}
 
       if ("contentHint" in videoTrack.mediaStreamTrack) {
         videoTrack.mediaStreamTrack.contentHint = "detail";
@@ -211,8 +201,10 @@ export default function RoomPage() {
       });
 
       await room.localParticipant.publishTrack(videoTrack, {
-        videoEncoding: VideoPresets.h1080.encoding,
-        simulcast: true,
+        videoEncoding: {
+          maxBitrate: 4500000,
+          maxFramerate: 30,
+        },
       });
 
       await room.localParticipant.publishTrack(audioTrack);
@@ -230,7 +222,7 @@ export default function RoomPage() {
         localEl.style.width = "100%";
         localEl.style.height = "100%";
         localEl.style.display = "block";
-        localEl.style.objectFit = "contain"; // Correction : Anti-zoom
+        localEl.style.objectFit = "contain";
         localEl.style.transform = "scaleX(-1)";
         localVideoWrapRef.current.innerHTML = "";
         localVideoWrapRef.current.appendChild(localEl);
@@ -276,20 +268,51 @@ export default function RoomPage() {
 
     startRoom();
 
-    return () => {
+    async function toggleCamera() {
+    const track = localVideoTrackRef.current;
+    if (!track) return;
+
+    if (track.isMuted) {
+      await track.unmute();
+      setCameraEnabled(true);
+      return;
+    }
+
+    await track.mute();
+    setCameraEnabled(false);
+  }
+
+  async function toggleMic() {
+    const track = localAudioTrackRef.current;
+    if (!track) return;
+
+    if (track.isMuted) {
+      await track.unmute();
+      setMicEnabled(true);
+      return;
+    }
+
+    await track.mute();
+    setMicEnabled(false);
+  }
+
+  function leaveRoom() {
+    try {
+      room.disconnect();
+    } catch {}
+    window.location.href = "/dashboard";
+  }
+
+  return () => {
       mounted = false;
-      startedRef.current = false;
       room.removeAllListeners();
 
       try {
-        if (localVideoTrackRef.current) {
-            localVideoTrackRef.current.detach().forEach(el => el.remove());
-            localVideoTrackRef.current.stop();
-        }
-        if (localAudioTrackRef.current) {
-            localAudioTrackRef.current.detach().forEach(el => el.remove());
-            localAudioTrackRef.current.stop();
-        }
+        localVideoTrackRef.current?.stop();
+      } catch {}
+
+      try {
+        localAudioTrackRef.current?.stop();
       } catch {}
 
       localVideoTrackRef.current = null;
@@ -299,7 +322,7 @@ export default function RoomPage() {
     };
   }, [room, roomId]);
 
-  async function toggleCamera() {
+    async function toggleCamera() {
     const track = localVideoTrackRef.current;
     if (!track) return;
 
@@ -449,3 +472,6 @@ export default function RoomPage() {
     </div>
   );
 }
+
+
+
