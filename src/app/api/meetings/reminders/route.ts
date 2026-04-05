@@ -4,9 +4,10 @@ import { buildMeetingLink } from "@/lib/meetings";
 import { sendMeetingInvitationEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
+  const db = prisma as any;
   const now = new Date();
 
-  const reminders = await prisma.meetingReminder.findMany({
+  const reminders = await db.meetingReminder.findMany({
     where: {
       sentAt: null,
       remindAt: { lte: now },
@@ -24,7 +25,11 @@ export async function POST(req: NextRequest) {
   const sentIds: string[] = [];
 
   for (const reminder of reminders) {
-    const joinLink = buildMeetingLink(origin, reminder.meeting.roomId, reminder.meeting.inviteToken);
+    const joinLink = buildMeetingLink(
+      origin,
+      reminder.meeting.roomId,
+      reminder.meeting.inviteToken
+    );
 
     for (const invitee of reminder.meeting.invitees) {
       await sendMeetingInvitationEmail({
@@ -41,7 +46,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    await prisma.meetingReminder.update({
+    await db.meetingReminder.update({
       where: { id: reminder.id },
       data: { sentAt: new Date() },
     });

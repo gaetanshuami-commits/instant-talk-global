@@ -6,9 +6,10 @@ import { sendMeetingInvitationEmail } from "@/lib/email";
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, ctx: Params) {
+  const db = prisma as any;
   const { id } = await ctx.params;
 
-  const meeting = await prisma.meeting.findUnique({
+  const meeting = await db.meeting.findUnique({
     where: { id },
     include: { invitees: true },
   });
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, ctx: Params) {
     });
 
     if (result.sent) {
-      await prisma.meetingInvite.update({
+      await db.meetingInvite.update({
         where: { id: invitee.id },
         data: { status: "SENT" },
       });

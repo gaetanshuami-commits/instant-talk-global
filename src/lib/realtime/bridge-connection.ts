@@ -6,7 +6,7 @@
 }
 
 export interface BridgeMessage {
-  type: 'transcript' | 'translation' | 'error' | 'bridge_ready';
+  type: "transcript" | "translation" | "error" | "bridge_ready";
   text?: string;
   language?: string;
   message?: string;
@@ -17,11 +17,9 @@ class BridgeConnection {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 2000;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private messageHandlers: Set<(msg: BridgeMessage) => void> = new Set();
-  private stateListeners: Set
-    (state: BridgeConnectionState) => void
-  > = new Set();
+  private stateListeners: Set<(state: BridgeConnectionState) => void> = new Set();
   private state: BridgeConnectionState = {
     connected: false,
     connecting: false,
@@ -38,19 +36,19 @@ class BridgeConnection {
 
     try {
       const protocol =
-        typeof window !== 'undefined' && window.location.protocol === 'https:'
-          ? 'wss:'
-          : 'ws:';
+        typeof window !== "undefined" && window.location.protocol === "https:"
+          ? "wss:"
+          : "ws:";
       const host =
-        typeof window !== 'undefined'
+        typeof window !== "undefined"
           ? window.location.host
-          : 'localhost:3000';
+          : "localhost:3000";
       const url = `${protocol}//${host}/api/deepgram-bridge`;
 
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
-        console.log('[Bridge] Connected');
+        console.log("[Bridge] Connected");
         this.reconnectAttempts = 0;
         this.updateState({ connected: true, connecting: false });
         this.startHeartbeat();
@@ -62,26 +60,26 @@ class BridgeConnection {
           const data = JSON.parse(event.data) as BridgeMessage;
           this.messageHandlers.forEach((handler) => handler(data));
         } catch (error) {
-          console.error('[Bridge] Message parse error:', error);
+          console.error("[Bridge] Message parse error:", error);
         }
       };
 
       this.ws.onerror = (error) => {
-        console.error('[Bridge] Error:', error);
+        console.error("[Bridge] Error:", error);
         this.updateState({
           connected: false,
-          error: 'WebSocket error',
+          error: "WebSocket error",
         });
       };
 
       this.ws.onclose = () => {
-        console.log('[Bridge] Disconnected');
+        console.log("[Bridge] Disconnected");
         this.stopHeartbeat();
         this.updateState({ connected: false, connecting: false });
         this.attemptReconnect();
       };
     } catch (error) {
-      console.error('[Bridge] Connection failed:', error);
+      console.error("[Bridge] Connection failed:", error);
       this.updateState({
         connecting: false,
         connected: false,
@@ -112,7 +110,7 @@ class BridgeConnection {
   private startHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }));
+        this.ws.send(JSON.stringify({ type: "ping" }));
       }
     }, 30000);
   }
@@ -126,26 +124,26 @@ class BridgeConnection {
 
   sendAudio(audioData: Int16Array, targetLanguage: string): void {
     if (this.ws?.readyState !== WebSocket.OPEN) {
-      console.warn('[Bridge] WebSocket not open, dropping audio frame');
+      console.warn("[Bridge] WebSocket not open, dropping audio frame");
       return;
     }
 
     try {
       this.ws.send(
         JSON.stringify({
-          type: 'audio',
+          type: "audio",
           audio: Array.from(audioData),
           targetLanguage,
         })
       );
     } catch (error) {
-      console.error('[Bridge] Failed to send audio:', error);
+      console.error("[Bridge] Failed to send audio:", error);
     }
   }
 
   stopTranscription(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'stop' }));
+      this.ws.send(JSON.stringify({ type: "stop" }));
     }
   }
 

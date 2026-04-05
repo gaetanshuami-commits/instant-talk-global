@@ -1,0 +1,673 @@
+﻿=== AUDIT SOURCE ===
+
+===========================================================
+📁 FICHIER : src/app/room/[roomId]/page.tsx
+===========================================================
+[FICHIER INTROUVABLE]
+
+===========================================================
+📁 FICHIER : src/components/RealtimeVoiceOverlay.tsx
+===========================================================
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { type Room, RoomEvent, RemoteParticipant, type LocalAudioTrack } from "livekit-client";
+
+type Props = {
+  room: Room;
+  localAudioTrack?: LocalAudioTrack | null;
+  muteOriginalMic?: () => Promise<void>;
+  unmuteOriginalMic?: () => Promise<void>;
+};
+
+type VoiceProfile = "female" | "male";
+
+const LANGUAGE_OPTIONS = [
+  { value: "FR", label: "Francais" },
+  { value: "EN", label: "English" },
+  { value: "ES", label: "Espanol" },
+  { value: "DE", label: "Deutsch" },
+  { value: "ZH", label: "Chinese" },
+  { value: "AR", label: "Arabic" },
+  { value: "HI", label: "Hindi" },
+  { value: "PT", label: "Portugues" },
+  { value: "RU", label: "Russian" },
+  { value: "JA", label: "Japanese" },
+  { value: "IT", label: "Italiano" },
+  { value: "NL", label: "Nederlands" },
+  { value: "SW", label: "Swahili" },
+  { value: "PL", label: "Polski" },
+  { value: "UK", label: "Ukrainian" },
+  { value: "RO", label: "Romanian" },
+  { value: "EL", label: "Greek" },
+  { value: "SV", label: "Swedish" }
+];
+
+const VOICE_PRESETS: Record<VoiceProfile, { label: string; voiceId: string }> = {
+  female: { label: "Voix femme", voiceId: "EXAVITQu4vr4xnSDxMaL" },
+  male: { label: "Voix homme", voiceId: "TxGEqnHWrfWFTfGW9XjX" }
+};
+
+function normalizeTextForTts(text: string) {
+  return text
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/([,;:])(?=\S)/g, "$1 ")
+    .trim();
+}
+
+export default function RealtimeVoiceOverlay({
+  room,
+  localAudioTrack,
+  muteOriginalMic,
+  unmuteOriginalMic
+}: Props) {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [targetLang, setTargetLang] = useState("EN");
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile>("female");
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [isVoiceMenuOpen, setIsVoiceMenuOpen] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const targetLangRef = useRef(targetLang);
+  const voiceProfileRef = useRef<VoiceProfile>(voiceProfile);
+  const muteFnRef = useRef(muteOriginalMic);
+  const unmuteFnRef = useRef(unmuteOriginalMic);
+  const partialTranslateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finalBufferRef = useRef("");
+  const lastPartialTranscriptRef = useRef("");
+  const lastPartialTranslationRef = useRef("");
+  const lastFinalTranslationRef = useRef("");
+  const processingQueueRef = useRef(Promise.resolve());
+  const playbackDepthRef = useRef(0);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    targetLangRef.current = targetLang;
+  }, [targetLang]);
+
+  useEffect(() => {
+    voiceProfileRef.current = voiceProfile;
+  }, [voiceProfile]);
+
+  useEffect(() => {
+    muteFnRef.current = muteOriginalMic;
+    unmuteFnRef.current = unmuteOriginalMic;
+  }, [muteOriginalMic, unmuteOriginalMic]);
+
+  function cleanupAudioUrl() {
+    if (audioUrlRef.current) {
+      try {
+        URL.revokeObjectURL(audioUrlRef.current);
+      } catch {}
+      audioUrlRef.current = null;
+    }
+  }
+
+  async function stopCurrentPlayback(resumeMic: boolean) {
+    try {
+      if (audioElRef.current) {
+        audioElRef.current.pause();
+        audioElRef.current.src = "";
+        audioElRef.current.load();
+      }
+    } catch {}
+
+    cleanupAudioUrl();
+    playbackDepthRef.current = 0;
+
+    if (resumeMic) {
+      try {
+        recorderRef.current?.resume();
+      } catch {}
+
+      if (unmuteFnRef.current) {
+        await unmuteFnRef.current();
+      }
+    }
+  }
+
+  async function publishSubtitle(kind: "subtitle_partial" | "subtitle", text: string) {
+    const cleanText = text.trim();
+    if (!cleanText || !room.localParticipant) return;
+
+    const payload = JSON.stringify({
+      type: kind,
+      text: cleanText,
+      lang: targetLangRef.current
+    });
+
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(payload),
+        { reliable: false }
+      );
+    } catch {}
+  }
+
+  async function requestTranslation(text: string, mode: "partial" | "final") {
+    const cleanText = text.trim();
+    if (!cleanText) return "";
+
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          text: cleanText,
+          targetLang: targetLangRef.current,
+          mode
+        })
+      });
+
+      const json = await res.json().catch(() => null);
+      return String(json?.translatedText ?? "").trim();
+    } catch (error) {
+      console.error("REQUEST_TRANSLATION_ERROR", error);
+      return "";
+    }
+  }
+
+  async function sendPartialTranslation(text: string) {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    if (cleanText === lastPartialTranscriptRef.current) return;
+
+    lastPartialTranscriptRef.current = cleanText;
+
+    const translated = await requestTranslation(cleanText, "partial");
+    if (!translated) return;
+    if (translated === lastPartialTranslationRef.current) return;
+
+    lastPartialTranslationRef.current = translated;
+    await publishSubtitle("subtitle_partial", translated);
+  }
+
+  async function sendFinalTranslation(text: string) {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    const translated = await requestTranslation(cleanText, "final");
+    if (!translated) return;
+    if (translated === lastFinalTranslationRef.current) return;
+
+    lastFinalTranslationRef.current = translated;
+    lastPartialTranslationRef.current = "";
+
+    await publishSubtitle("subtitle", translated);
+
+    if (!room.localParticipant || translated.length < 2) return;
+
+    const selectedVoice = VOICE_PRESETS[voiceProfileRef.current] || VOICE_PRESETS.female;
+
+    const voicePayload = JSON.stringify({
+      type: "voice_trigger",
+      text: normalizeTextForTts(translated),
+      voice: selectedVoice.voiceId,
+      lang: targetLangRef.current,
+      voiceProfile: voiceProfileRef.current
+    });
+
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(voicePayload),
+        { reliable: false }
+      );
+    } catch {}
+  }
+
+  async function playElevenLabs(text: string, voiceId: string) {
+    const cleanText = normalizeTextForTts(text);
+    if (!cleanText) return;
+
+    await stopCurrentPlayback(false);
+    playbackDepthRef.current = 1;
+
+    try {
+      try {
+        recorderRef.current?.pause();
+      } catch {}
+
+      if (muteFnRef.current) {
+        await muteFnRef.current();
+      }
+
+      const res = await fetch("/api/elevenlabs-tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ text: cleanText, voiceId })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.error("TTS_HTTP_ERROR", res.status, errText);
+        throw new Error("TTS request failed");
+      }
+
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty audio blob");
+      }
+
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+
+      const audio = new Audio(url);
+      audio.autoplay = true;
+      audio.preload = "auto";
+      audioElRef.current = audio;
+
+      audio.onended = async () => {
+        playbackDepthRef.current = 0;
+        cleanupAudioUrl();
+
+        try {
+          recorderRef.current?.resume();
+        } catch {}
+
+        if (unmuteFnRef.current) {
+          await unmuteFnRef.current();
+        }
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error("PLAY_ELEVENLABS_ERROR", error);
+      playbackDepthRef.current = 0;
+
+      try {
+        recorderRef.current?.resume();
+      } catch {}
+
+      if (unmuteFnRef.current) {
+        await unmuteFnRef.current();
+      }
+    }
+  }
+
+  async function buildSpeechStream() {
+    const existingTrack = (localAudioTrack as any)?.mediaStreamTrack as MediaStreamTrack | undefined;
+
+    if (existingTrack) {
+      return new MediaStream([existingTrack.clone()]);
+    }
+
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
+      }
+    });
+  }
+
+  useEffect(() => {
+    const handleDataReceived = (payload: Uint8Array, participant?: RemoteParticipant) => {
+      if (
+        participant &&
+        room.localParticipant &&
+        participant.identity === room.localParticipant.identity
+      ) {
+        return;
+      }
+
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+        if (data.type === "voice_trigger" && data.text && data.voice) {
+          playElevenLabs(String(data.text), String(data.voice));
+        }
+      } catch {}
+    };
+
+    room.on(RoomEvent.DataReceived, handleDataReceived);
+    return () => {
+      room.off(RoomEvent.DataReceived, handleDataReceived);
+    };
+  }, [room]);
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+
+    let isActive = true;
+
+    async function startListening() {
+      try {
+        const stream = await buildSpeechStream();
+        mediaStreamRef.current = stream;
+
+        const tokenRes = await fetch("/api/deepgram-token", { cache: "no-store" });
+        const { token } = await tokenRes.json();
+
+        const ws = new WebSocket(
+          "wss://api.deepgram.com/v1/listen?model=nova-2&language=multi&smart_format=true&punctuate=true&interim_results=true&endpointing=180",
+          ["token", token]
+        );
+
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!isActive) return;
+
+          let mimeType = "audio/webm;codecs=opus";
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = "audio/webm";
+          }
+
+          const recorder = new MediaRecorder(stream, { mimeType });
+          recorderRef.current = recorder;
+
+          recorder.ondataavailable = (e) => {
+            if (
+              e.data.size > 0 &&
+              ws.readyState === WebSocket.OPEN &&
+              playbackDepthRef.current === 0
+            ) {
+              ws.send(e.data);
+            }
+          };
+
+          recorder.start(120);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isActive) return;
+          if (playbackDepthRef.current > 0) return;
+
+          try {
+            const json = JSON.parse(event.data);
+            const text = String(json.channel?.alternatives?.[0]?.transcript ?? "").trim();
+            const isFinal = Boolean(json.is_final || json.speech_final);
+
+            if (!text) return;
+
+            if (partialTranslateTimerRef.current) {
+              clearTimeout(partialTranslateTimerRef.current);
+              partialTranslateTimerRef.current = null;
+            }
+
+            partialTranslateTimerRef.current = setTimeout(() => {
+              processingQueueRef.current = processingQueueRef.current
+                .then(() => sendPartialTranslation(text))
+                .catch(() => {});
+            }, 320);
+
+            if (isFinal) {
+              finalBufferRef.current = finalBufferRef.current
+                ? finalBufferRef.current + " " + text
+                : text;
+            }
+
+            if (json.speech_final) {
+              const finalText = finalBufferRef.current.trim() || text;
+              finalBufferRef.current = "";
+              lastPartialTranscriptRef.current = "";
+              lastPartialTranslationRef.current = "";
+
+              processingQueueRef.current = processingQueueRef.current
+                .then(() => sendFinalTranslation(finalText))
+                .catch(() => {});
+            }
+          } catch (error) {
+            console.error("DEEPGRAM_MESSAGE_ERROR", error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error("DEEPGRAM_WS_ERROR", error);
+        };
+      } catch (error) {
+        console.error("START_LISTENING_ERROR", error);
+      }
+    }
+
+    startListening();
+
+    return () => {
+      isActive = false;
+      finalBufferRef.current = "";
+      lastPartialTranscriptRef.current = "";
+      lastPartialTranslationRef.current = "";
+      lastFinalTranslationRef.current = "";
+
+      if (partialTranslateTimerRef.current) {
+        clearTimeout(partialTranslateTimerRef.current);
+        partialTranslateTimerRef.current = null;
+      }
+
+      stopCurrentPlayback(false).catch(() => {});
+
+      try {
+        recorderRef.current?.stop();
+      } catch {}
+
+      recorderRef.current = null;
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+
+      try {
+        wsRef.current?.close();
+      } catch {}
+
+      wsRef.current = null;
+    };
+  }, [isUnlocked, room, localAudioTrack]);
+
+  const selectedLangLabel =
+    LANGUAGE_OPTIONS.find((l) => l.value === targetLang)?.label || "Langue";
+
+  const selectedVoiceLabel =
+    VOICE_PRESETS[voiceProfile]?.label || "Voix";
+
+  const shellStyle: React.CSSProperties = {
+    position: "fixed",
+    right: "16px",
+    bottom: "96px",
+    zIndex: 9999,
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    width: "220px"
+  };
+
+  const cardStyle: React.CSSProperties = {
+    background: "rgba(0,0,0,0.84)",
+    border: "1px solid #3c4043",
+    borderRadius: "18px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+    overflow: "hidden"
+  };
+
+  const triggerStyle: React.CSSProperties = {
+    width: "100%",
+    background: "transparent",
+    color: "white",
+    border: "none",
+    outline: "none",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    padding: "12px 14px",
+    textAlign: "left"
+  };
+
+  const menuStyle: React.CSSProperties = {
+    maxHeight: "220px",
+    overflowY: "auto",
+    overflowX: "hidden",
+    background: "#202124",
+    borderTop: "1px solid #3c4043",
+    scrollbarWidth: "thin",
+    overscrollBehavior: "contain"
+  };
+
+  const itemStyle = (active: boolean): React.CSSProperties => ({
+    padding: "10px 14px",
+    color: "white",
+    fontSize: "14px",
+    cursor: "pointer",
+    borderBottom: "1px solid #303134",
+    fontWeight: active ? 700 : 500,
+    background: active ? "#2b5fd9" : "transparent",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
+  });
+
+  return (
+    <div style={shellStyle}>
+      <div style={cardStyle}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "12px 14px",
+            borderBottom: "1px solid #3c4043"
+          }}
+        >
+          <div
+            style={{
+              width: "10px",
+              height: "10px",
+              borderRadius: "50%",
+              background: isUnlocked ? "#22c55e" : "#ef4444",
+              boxShadow: isUnlocked ? "0 0 8px #22c55e" : "none",
+              flex: "0 0 auto"
+            }}
+          />
+          <div style={{ color: "white", fontSize: "14px", fontWeight: 700, flex: 1 }}>
+            Traduction IA
+          </div>
+
+          {!isUnlocked && (
+            <button
+              onClick={() => setIsUnlocked(true)}
+              style={{
+                background: "#2563eb",
+                color: "white",
+                border: "none",
+                padding: "8px 12px",
+                borderRadius: "10px",
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: "12px"
+              }}
+            >
+              Activer
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={() => {
+            setIsLangMenuOpen((v) => !v);
+            setIsVoiceMenuOpen(false);
+          }}
+          style={triggerStyle}
+        >
+          <span>{selectedLangLabel}</span>
+          <span>â–¼</span>
+        </button>
+
+        {isLangMenuOpen && (
+          <div style={menuStyle}>
+            {LANGUAGE_OPTIONS.map((l) => (
+              <div
+                key={l.value}
+                onClick={() => {
+                  setTargetLang(l.value);
+                  setIsLangMenuOpen(false);
+                }}
+                style={itemStyle(targetLang === l.value)}
+              >
+                {l.label}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={() => {
+            setIsVoiceMenuOpen((v) => !v);
+            setIsLangMenuOpen(false);
+          }}
+          style={{ ...triggerStyle, borderTop: "1px solid #3c4043" }}
+        >
+          <span>{selectedVoiceLabel}</span>
+          <span>â–¼</span>
+        </button>
+
+        {isVoiceMenuOpen && (
+          <div style={menuStyle}>
+            {(Object.keys(VOICE_PRESETS) as VoiceProfile[]).map((key) => (
+              <div
+                key={key}
+                onClick={() => {
+                  setVoiceProfile(key);
+                  setIsVoiceMenuOpen(false);
+                }}
+                style={itemStyle(voiceProfile === key)}
+              >
+                {VOICE_PRESETS[key].label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+===========================================================
+📁 FICHIER : .env.local
+===========================================================
+
+# --- LIVEKIT (VisioconfÃ©rence) ---
+NEXT_PUBLIC_LIVEKIT_URL=wss://instant-talk-global-2x25mtu3.livekit.cloud
+LIVEKIT_API_KEY=APIYFQb5LRR6Zqy
+LIVEKIT_API_SECRET=[CLE_MASQUEE]
+
+# --- DEEPGRAM (Transcription) ---
+DEEPGRAM_API_KEY=[CLE_MASQUEE]
+DEEPGRAM_PROJECT_ID=[CLE_MASQUEE]
+
+# --- GEMINI (Traduction) ---
+GEMINI_API_KEY=[CLE_MASQUEE]
+
+# --- ELEVENLABS (Voix IA) ---
+ELEVENLABS_API_KEY=[CLE_MASQUEE]
+ELEVENLABS_VOICE_ID=[CLE_MASQUEE] # ID par dÃ©faut (Rachel) ou l vÃ´tre
+
+AZURE_SPEECH_KEY=[CLE_MASQUEE]
+AZURE_SPEECH_REGION=francecentral
+
+AZURE_COMMUNICATION_CONNECTION_STRING=[CLE_MASQUEE]
+
+OPENAI_API_KEY=[CLE_MASQUEE]
+
+
+OPENAI_API_KEY=[CLE_MASQUEE]
+
+# --- DATABASE & AUTH ---
+DATABASE_URL=postgresql://postgres:Ycw3yisqpqfZTo2J@db.rinzuiebyuybfxrvurka.supabase.co:5432/postgres?sslmode=require
+NEXTAUTH_SECRET=[CLE_MASQUEE] 
+NEXTAUTH_URL="http://localhost:3000"
+
+RESEND_API_KEY=[CLE_MASQUEE]
+
+
+
+

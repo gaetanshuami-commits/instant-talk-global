@@ -1,0 +1,1508 @@
+﻿=== AUDIT ERREUR TS + PIPELINE ===
+
+====================================================
+FILE : src/lib/realtime/bridge-connection.ts
+====================================================
+export interface BridgeConnectionState {
+  connected: boolean;
+  connecting: boolean;
+  error: string | null;
+  lastMessageTime: number;
+}
+
+export interface BridgeMessage {
+  type: 'transcript' | 'translation' | 'error' | 'bridge_ready';
+  text?: string;
+  language?: string;
+  message?: string;
+}
+
+class BridgeConnection {
+  private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectDelay = 2000;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private messageHandlers: Set<(msg: BridgeMessage) => void> = new Set();
+  private stateListeners: Set
+    (state: BridgeConnectionState) => void
+  > = new Set();
+  private state: BridgeConnectionState = {
+    connected: false,
+    connecting: false,
+    error: null,
+    lastMessageTime: 0,
+  };
+
+  connect(): void {
+    if (this.state.connecting || this.state.connected) {
+      return;
+    }
+
+    this.updateState({ connecting: true, error: null });
+
+    try {
+      const protocol =
+        typeof window !== 'undefined' && window.location.protocol === 'https:'
+          ? 'wss:'
+          : 'ws:';
+      const host =
+        typeof window !== 'undefined'
+          ? window.location.host
+          : 'localhost:3000';
+      const url = `${protocol}//${host}/api/deepgram-bridge`;
+
+      this.ws = new WebSocket(url);
+
+      this.ws.onopen = () => {
+        console.log('[Bridge] Connected');
+        this.reconnectAttempts = 0;
+        this.updateState({ connected: true, connecting: false });
+        this.startHeartbeat();
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          this.state.lastMessageTime = Date.now();
+          const data = JSON.parse(event.data) as BridgeMessage;
+          this.messageHandlers.forEach((handler) => handler(data));
+        } catch (error) {
+          console.error('[Bridge] Message parse error:', error);
+        }
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('[Bridge] Error:', error);
+        this.updateState({
+          connected: false,
+          error: 'WebSocket error',
+        });
+      };
+
+      this.ws.onclose = () => {
+        console.log('[Bridge] Disconnected');
+        this.stopHeartbeat();
+        this.updateState({ connected: false, connecting: false });
+        this.attemptReconnect();
+      };
+    } catch (error) {
+      console.error('[Bridge] Connection failed:', error);
+      this.updateState({
+        connecting: false,
+        connected: false,
+        error: String(error),
+      });
+      this.attemptReconnect();
+    }
+  }
+
+  private attemptReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.updateState({
+        error: `Failed to connect after ${this.maxReconnectAttempts} attempts`,
+      });
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
+      30000
+    );
+    console.log(`[Bridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
+    setTimeout(() => this.connect(), delay);
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  sendAudio(audioData: Int16Array, targetLanguage: string): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      console.warn('[Bridge] WebSocket not open, dropping audio frame');
+      return;
+    }
+
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: 'audio',
+          audio: Array.from(audioData),
+          targetLanguage,
+        })
+      );
+    } catch (error) {
+      console.error('[Bridge] Failed to send audio:', error);
+    }
+  }
+
+  stopTranscription(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'stop' }));
+    }
+  }
+
+  onMessage(handler: (msg: BridgeMessage) => void): () => void {
+    this.messageHandlers.add(handler);
+    return () => {
+      this.messageHandlers.delete(handler);
+    };
+  }
+
+  onStateChange(handler: (state: BridgeConnectionState) => void): () => void {
+    this.stateListeners.add(handler);
+    handler(this.state);
+    return () => {
+      this.stateListeners.delete(handler);
+    };
+  }
+
+  private updateState(partial: Partial<BridgeConnectionState>): void {
+    this.state = { ...this.state, ...partial };
+    this.stateListeners.forEach((listener) => listener(this.state));
+  }
+
+  disconnect(): void {
+    this.stopHeartbeat();
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.updateState({ connected: false, connecting: false });
+  }
+
+  getState(): BridgeConnectionState {
+    return { ...this.state };
+  }
+}
+
+export const bridgeConnection = new BridgeConnection();
+
+
+====================================================
+FILE : src/components/RealtimeVoiceOverlay.tsx
+====================================================
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { type Room, RoomEvent, RemoteParticipant, type LocalAudioTrack } from "livekit-client";
+
+type Props = {
+  room: Room;
+  localAudioTrack?: LocalAudioTrack | null;
+  muteOriginalMic?: () => Promise<void>;
+  unmuteOriginalMic?: () => Promise<void>;
+};
+
+type TracePayload = {
+  type: "trace";
+  traceId: string;
+  stage: string;
+  t?: number;
+  text?: string;
+  lang?: string;
+  meta?: Record<string, unknown>;
+};
+
+const LANGUAGE_OPTIONS = [
+  { value: "FR", label: "Français" }, { value: "EN", label: "English" },
+  { value: "ES", label: "Español" }, { value: "DE", label: "Deutsch" },
+  { value: "ZH", label: "中文" }, { value: "AR", label: "العربية" },
+  { value: "HI", label: "हिन्दी" }, { value: "PT", label: "Português" },
+  { value: "RU", label: "Русский" }, { value: "JA", label: "日本語" },
+  { value: "IT", label: "Italiano" }, { value: "NL", label: "Nederlands" }
+];
+
+const VOICES: Record<string, string> = {
+  FR: "21m00Tcm4TlvDq8ikWAM",
+  EN: "29vD33N1CtxCmqQRPOHJ",
+  ES: "2EiwWnXFnvU5JabPnv8n",
+  DE: "zrHiDhphv9ZnVXBqCLjz",
+  IT: "21m00Tcm4TlvDq8ikWAM",
+  ZH: "29vD33N1CtxCmqQRPOHJ",
+  AR: "2EiwWnXFnvU5JabPnv8n",
+  RU: "zrHiDhphv9ZnVXBqCLjz"
+};
+
+function nowMs() {
+  return Math.round(performance.now());
+}
+
+function shortText(text: string, max = 80) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > max ? clean.slice(0, max) + "..." : clean;
+}
+
+export default function RealtimeVoiceOverlay({ room, localAudioTrack, muteOriginalMic, unmuteOriginalMic }: Props) {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [targetLang, setTargetLang] = useState("EN");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const transcriptBufferRef = useRef("");
+  const processingQueueRef = useRef(Promise.resolve());
+  const playbackDepthRef = useRef(0);
+  const targetLangRef = useRef(targetLang);
+  const muteFnRef = useRef(muteOriginalMic);
+  const unmuteFnRef = useRef(unmuteOriginalMic);
+  const partialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPartialSentRef = useRef("");
+  const lastFinalSentRef = useRef("");
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const currentAudioElRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
+  const ttsSequenceRef = useRef(0);
+
+  useEffect(() => {
+    targetLangRef.current = targetLang;
+  }, [targetLang]);
+
+  useEffect(() => {
+    muteFnRef.current = muteOriginalMic;
+    unmuteFnRef.current = unmuteOriginalMic;
+  }, [muteOriginalMic, unmuteOriginalMic]);
+
+  function emitTrace(trace: Omit<TracePayload, "type">) {
+    const payload: TracePayload = { type: "trace", ...trace };
+    try {
+      console.log("[TRACE]", payload.traceId, payload.stage, payload);
+    } catch {}
+  }
+
+  async function publishTrace(trace: Omit<TracePayload, "type">) {
+    emitTrace(trace);
+
+    if (!room.localParticipant) return;
+
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ type: "trace", ...trace })),
+        { reliable: false }
+      );
+    } catch {}
+  }
+
+  async function ensureAudioContext() {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioCtx();
+    }
+    if (audioCtxRef.current.state === "suspended") {
+      await audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }
+
+  function pauseSpeechCapture() {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+
+    try {
+      if (recorder.state === "recording") {
+        recorder.pause();
+      }
+    } catch {}
+  }
+
+  function resumeSpeechCapture() {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+
+    try {
+      if (recorder.state === "paused" && playbackDepthRef.current === 0) {
+        recorder.resume();
+      }
+    } catch {}
+  }
+
+  async function publishPartialSubtitle(text: string, lang: string) {
+    const cleanText = text.trim();
+    if (!cleanText || !room.localParticipant) return;
+    if (cleanText === lastPartialSentRef.current) return;
+
+    lastPartialSentRef.current = cleanText;
+
+    const payload = JSON.stringify({
+      type: "subtitle_partial",
+      text: cleanText,
+      lang,
+    });
+
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(payload),
+        { reliable: false }
+      );
+    } catch {}
+  }
+
+  async function translateAndPublish(finalText: string, lang: string, traceId: string, speechFinalAt: number) {
+    const cleanText = finalText.trim();
+    if (!cleanText) return;
+    if (cleanText === lastFinalSentRef.current) return;
+
+    lastFinalSentRef.current = cleanText;
+    lastPartialSentRef.current = "";
+
+    await publishTrace({
+      traceId,
+      stage: "translate_request_start",
+      t: nowMs(),
+      text: shortText(cleanText),
+      lang,
+      meta: { speechFinalAt },
+    });
+
+    try {
+      const translateRes = await fetch("/api/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-trace-id": traceId,
+          "x-client-speech-final-at": String(speechFinalAt),
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          text: cleanText,
+          targetLang: lang,
+          sourceLang: "FR"
+        }),
+      });
+
+      await publishTrace({
+        traceId,
+        stage: "translate_response_received",
+        t: nowMs(),
+        meta: { ok: translateRes.ok, status: translateRes.status },
+      });
+
+      if (!translateRes.ok) return;
+
+      const result = await translateRes.json();
+      const translatedText = String(result?.translatedText ?? "").trim();
+
+      await publishTrace({
+        traceId,
+        stage: "translate_json_parsed",
+        t: nowMs(),
+        text: shortText(translatedText),
+        meta: {
+          provider: result?.provider ?? null,
+          detectedSourceLang: result?.detectedSourceLang ?? null,
+          serverTiming: result?.timing ?? null,
+        },
+      });
+
+      if (!translatedText || !room.localParticipant) return;
+
+      const subtitlePayload = JSON.stringify({
+        type: "subtitle",
+        text: translatedText,
+        lang,
+        sourceText: cleanText,
+        traceId,
+      });
+
+      const voiceId = VOICES[lang] || VOICES["EN"];
+      const voicePayload = JSON.stringify({
+        type: "voice_trigger",
+        text: translatedText,
+        voice: voiceId,
+        lang,
+        traceId,
+      });
+
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(subtitlePayload),
+        { reliable: false }
+      );
+
+      await publishTrace({
+        traceId,
+        stage: "subtitle_published",
+        t: nowMs(),
+        text: shortText(translatedText),
+        lang,
+      });
+
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(voicePayload),
+        { reliable: false }
+      );
+
+      await publishTrace({
+        traceId,
+        stage: "voice_trigger_published",
+        t: nowMs(),
+        text: shortText(translatedText),
+        lang,
+        meta: { voiceId },
+      });
+    } catch (error) {
+      await publishTrace({
+        traceId,
+        stage: "translate_publish_error",
+        t: nowMs(),
+        meta: {
+          message: error instanceof Error ? error.message : "unknown",
+        },
+      });
+    }
+  }
+
+  async function cleanupActiveTts(shouldResumeMic: boolean) {
+    try {
+      ttsAbortRef.current?.abort();
+    } catch {}
+
+    ttsAbortRef.current = null;
+
+    try {
+      if (currentAudioElRef.current) {
+        currentAudioElRef.current.pause();
+        currentAudioElRef.current.src = "";
+        currentAudioElRef.current.load();
+      }
+    } catch {}
+
+    currentAudioElRef.current = null;
+
+    if (currentAudioUrlRef.current) {
+      try {
+        URL.revokeObjectURL(currentAudioUrlRef.current);
+      } catch {}
+      currentAudioUrlRef.current = null;
+    }
+
+    playbackDepthRef.current = 0;
+
+    if (shouldResumeMic) {
+      resumeSpeechCapture();
+      if (unmuteFnRef.current) {
+        await unmuteFnRef.current();
+      }
+    }
+  }
+
+  async function playBufferedFallback(res: Response, seq: number, traceId: string) {
+    const arrayBuffer = await res.arrayBuffer();
+
+    if (seq !== ttsSequenceRef.current) {
+      return;
+    }
+
+    await publishTrace({
+      traceId,
+      stage: "tts_buffer_complete",
+      t: nowMs(),
+      meta: { bytes: arrayBuffer.byteLength },
+    });
+
+    const audioCtx = await ensureAudioContext();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    const source = audioCtx.createBufferSource();
+
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+
+    await publishTrace({
+      traceId,
+      stage: "playback_start_buffered",
+      t: nowMs(),
+      meta: { durationSec: audioBuffer.duration },
+    });
+
+    source.onended = async () => {
+      if (seq !== ttsSequenceRef.current) return;
+
+      playbackDepthRef.current = Math.max(0, playbackDepthRef.current - 1);
+
+      await publishTrace({
+        traceId,
+        stage: "playback_end",
+        t: nowMs(),
+      });
+
+      if (playbackDepthRef.current === 0) {
+        resumeSpeechCapture();
+        if (unmuteFnRef.current) {
+          await unmuteFnRef.current();
+        }
+      }
+    };
+
+    source.start(0);
+  }
+
+  async function playStreamingAudio(res: Response, seq: number, traceId: string) {
+    if (!res.body) {
+      await playBufferedFallback(res, seq, traceId);
+      return;
+    }
+
+    const MediaSourceCtor = (window as any).MediaSource;
+    if (!MediaSourceCtor || !MediaSourceCtor.isTypeSupported || !MediaSourceCtor.isTypeSupported("audio/mpeg")) {
+      await publishTrace({
+        traceId,
+        stage: "tts_streaming_not_supported_fallback",
+        t: nowMs(),
+      });
+      await playBufferedFallback(res, seq, traceId);
+      return;
+    }
+
+    const mediaSource = new MediaSourceCtor();
+    const objectUrl = URL.createObjectURL(mediaSource);
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.src = objectUrl;
+
+    currentAudioElRef.current = audio;
+    currentAudioUrlRef.current = objectUrl;
+
+    await new Promise<void>((resolve, reject) => {
+      mediaSource.addEventListener("sourceopen", () => resolve(), { once: true });
+      mediaSource.addEventListener("error", () => reject(new Error("MediaSource error")), { once: true });
+    });
+
+    if (seq !== ttsSequenceRef.current) {
+      throw new Error("Obsolete TTS sequence");
+    }
+
+    const sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+    sourceBuffer.mode = "sequence";
+
+    const reader = res.body.getReader();
+    const queue: Uint8Array[] = [];
+    let appending = false;
+    let finished = false;
+    let playbackStarted = false;
+    let chunkCount = 0;
+    let totalBytes = 0;
+    let firstChunkAt: number | null = null;
+
+    const waitForIdle = () =>
+      new Promise<void>((resolve) => {
+        if (!appending && !sourceBuffer.updating) {
+          resolve();
+          return;
+        }
+
+        const done = () => {
+          sourceBuffer.removeEventListener("updateend", done);
+          resolve();
+        };
+
+        sourceBuffer.addEventListener("updateend", done);
+      });
+
+    const flushQueue = async () => {
+      if (appending || sourceBuffer.updating || queue.length === 0) return;
+      appending = true;
+
+      try {
+        const chunk = queue.shift();
+        if (!chunk) return;
+        sourceBuffer.appendBuffer(chunk);
+
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            sourceBuffer.removeEventListener("updateend", done);
+            resolve();
+          };
+          sourceBuffer.addEventListener("updateend", done);
+        });
+
+        if (!playbackStarted) {
+          playbackStarted = true;
+          await publishTrace({
+            traceId,
+            stage: "playback_start_streaming",
+            t: nowMs(),
+            meta: {
+              firstChunkAt,
+              chunkCount,
+              totalBytes,
+            },
+          });
+
+          try {
+            await audio.play();
+          } catch {}
+        }
+      } finally {
+        appending = false;
+
+        if (queue.length > 0) {
+          await flushQueue();
+        } else if (finished && !sourceBuffer.updating && mediaSource.readyState === "open") {
+          try {
+            mediaSource.endOfStream();
+          } catch {}
+        }
+      }
+    };
+
+    audio.onended = async () => {
+      if (seq !== ttsSequenceRef.current) return;
+
+      playbackDepthRef.current = Math.max(0, playbackDepthRef.current - 1);
+
+      await publishTrace({
+        traceId,
+        stage: "playback_end",
+        t: nowMs(),
+        meta: { chunkCount, totalBytes },
+      });
+
+      if (playbackDepthRef.current === 0) {
+        resumeSpeechCapture();
+        if (unmuteFnRef.current) {
+          await unmuteFnRef.current();
+        }
+      }
+
+      if (currentAudioUrlRef.current) {
+        try {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+        } catch {}
+        currentAudioUrlRef.current = null;
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (seq !== ttsSequenceRef.current) {
+        try {
+          reader.cancel();
+        } catch {}
+        throw new Error("Obsolete TTS sequence");
+      }
+
+      if (done) {
+        finished = true;
+
+        await publishTrace({
+          traceId,
+          stage: "tts_stream_complete",
+          t: nowMs(),
+          meta: { chunkCount, totalBytes },
+        });
+
+        await waitForIdle();
+
+        if (queue.length === 0 && !sourceBuffer.updating && mediaSource.readyState === "open") {
+          try {
+            mediaSource.endOfStream();
+          } catch {}
+        }
+        break;
+      }
+
+      if (value && value.byteLength > 0) {
+        chunkCount += 1;
+        totalBytes += value.byteLength;
+
+        if (firstChunkAt === null) {
+          firstChunkAt = nowMs();
+          await publishTrace({
+            traceId,
+            stage: "tts_first_chunk_received",
+            t: firstChunkAt,
+            meta: { bytes: value.byteLength },
+          });
+        }
+
+        queue.push(value);
+        await flushQueue();
+      }
+    }
+  }
+
+  async function playElevenLabs(text: string, voiceId: string, traceId: string) {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    const seq = ++ttsSequenceRef.current;
+
+    await cleanupActiveTts(false);
+
+    playbackDepthRef.current = 1;
+    pauseSpeechCapture();
+
+    const abortController = new AbortController();
+    ttsAbortRef.current = abortController;
+
+    try {
+      if (muteFnRef.current) {
+        await muteFnRef.current();
+      }
+
+      await publishTrace({
+        traceId,
+        stage: "tts_request_start",
+        t: nowMs(),
+        text: shortText(cleanText),
+        meta: { voiceId },
+      });
+
+      const res = await fetch("/api/elevenlabs-tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-trace-id": traceId,
+        },
+        cache: "no-store",
+        body: JSON.stringify({ text: cleanText, voiceId, traceId }),
+        signal: abortController.signal,
+      });
+
+      await publishTrace({
+        traceId,
+        stage: "tts_response_received",
+        t: nowMs(),
+        meta: {
+          ok: res.ok,
+          status: res.status,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("TTS request failed");
+      }
+
+      await playStreamingAudio(res, seq, traceId);
+    } catch (error) {
+      if (seq === ttsSequenceRef.current) {
+        playbackDepthRef.current = 0;
+
+        await publishTrace({
+          traceId,
+          stage: "tts_error",
+          t: nowMs(),
+          meta: {
+            message: error instanceof Error ? error.message : "unknown",
+          },
+        });
+
+        resumeSpeechCapture();
+        if (unmuteFnRef.current) {
+          await unmuteFnRef.current();
+        }
+      }
+    }
+  }
+
+  async function buildSpeechStream() {
+    const existingTrack = (localAudioTrack as any)?.mediaStreamTrack as MediaStreamTrack | undefined;
+
+    if (existingTrack) {
+      return new MediaStream([existingTrack.clone()]);
+    }
+
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+      },
+    });
+  }
+
+  useEffect(() => {
+    const handleDataReceived = (payload: Uint8Array, participant?: RemoteParticipant) => {
+      if (
+        participant &&
+        room.localParticipant &&
+        participant.identity === room.localParticipant.identity
+      ) {
+        return;
+      }
+
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+
+        if (data.type === "voice_trigger" && data.text && data.voice) {
+          playElevenLabs(String(data.text), String(data.voice), String(data.traceId || crypto.randomUUID()));
+          return;
+        }
+
+        if (data.type === "trace") {
+          console.log("[REMOTE_TRACE]", participant?.identity ?? "unknown", data);
+        }
+      } catch {}
+    };
+
+    room.on(RoomEvent.DataReceived, handleDataReceived);
+    return () => {
+      room.off(RoomEvent.DataReceived, handleDataReceived);
+    };
+  }, [room]);
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+
+    let isActive = true;
+
+    async function startListening() {
+      try {
+        const stream = await buildSpeechStream();
+        mediaStreamRef.current = stream;
+
+        const tokenRes = await fetch("/api/deepgram-token", { cache: "no-store" });
+        const { token } = await tokenRes.json();
+
+        const ws = new WebSocket(
+          "wss://api.deepgram.com/v1/listen?model=nova-2&language=fr&smart_format=true&punctuate=true&interim_results=true&endpointing=40",
+          ["token", token]
+        );
+
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!isActive) return;
+
+          let mimeType = "audio/webm;codecs=opus";
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = "audio/webm";
+          }
+
+          const recorder = new MediaRecorder(stream, { mimeType });
+          recorderRef.current = recorder;
+
+          recorder.ondataavailable = (e) => {
+            if (
+              e.data.size > 0 &&
+              ws.readyState === WebSocket.OPEN &&
+              playbackDepthRef.current === 0
+            ) {
+              ws.send(e.data);
+            }
+          };
+
+          recorder.start(40);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isActive) return;
+          if (playbackDepthRef.current > 0) return;
+
+          try {
+            const json = JSON.parse(event.data);
+            const text = String(json.channel?.alternatives?.[0]?.transcript ?? "").trim();
+
+            if (!text) return;
+
+            const isFinal = Boolean(json.is_final || json.speech_final);
+
+            if (partialTimerRef.current) {
+              clearTimeout(partialTimerRef.current);
+              partialTimerRef.current = null;
+            }
+
+            partialTimerRef.current = setTimeout(() => {
+              publishPartialSubtitle(text, targetLangRef.current);
+            }, 80);
+
+            if (isFinal) {
+              transcriptBufferRef.current = transcriptBufferRef.current
+                ? transcriptBufferRef.current + " " + text
+                : text;
+            }
+
+            if (json.speech_final) {
+              const traceId = crypto.randomUUID();
+              const speechFinalAt = nowMs();
+              const finalText = transcriptBufferRef.current.trim() || text;
+              transcriptBufferRef.current = "";
+
+              publishTrace({
+                traceId,
+                stage: "speech_final",
+                t: speechFinalAt,
+                text: shortText(finalText),
+                lang: targetLangRef.current,
+              }).catch(() => {});
+
+              processingQueueRef.current = processingQueueRef.current
+                .then(() => translateAndPublish(finalText, targetLangRef.current, traceId, speechFinalAt))
+                .catch(() => {});
+            }
+          } catch {}
+        };
+
+        ws.onerror = () => {};
+        ws.onclose = () => {};
+      } catch {}
+    }
+
+    startListening();
+
+    return () => {
+      isActive = false;
+      transcriptBufferRef.current = "";
+      lastPartialSentRef.current = "";
+      lastFinalSentRef.current = "";
+
+      if (partialTimerRef.current) {
+        clearTimeout(partialTimerRef.current);
+        partialTimerRef.current = null;
+      }
+
+      cleanupActiveTts(false).catch(() => {});
+
+      try {
+        recorderRef.current?.stop();
+      } catch {}
+
+      recorderRef.current = null;
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+
+      try {
+        wsRef.current?.close();
+      } catch {}
+
+      wsRef.current = null;
+    };
+  }, [isUnlocked, room, localAudioTrack]);
+
+  const selectedLabel =
+    LANGUAGE_OPTIONS.find((l) => l.value === targetLang)?.label || "Langue";
+
+  return (
+    <div style={{ position: "fixed", top: "16px", left: "50%", transform: "translateX(-50%)", zIndex: 9999, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+      <div style={{ background: "rgba(0,0,0,0.8)", padding: "8px 16px", borderRadius: "24px", display: "flex", alignItems: "center", gap: "10px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)", border: "1px solid #3c4043" }}>
+        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: isUnlocked ? "#22c55e" : "#ef4444", boxShadow: isUnlocked ? "0 0 8px #22c55e" : "none" }}></div>
+
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={{ background: "transparent", color: "white", border: "none", outline: "none", fontSize: "14px", fontWeight: "bold", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+            {selectedLabel} ▼
+          </button>
+
+          {isMenuOpen && (
+            <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: "12px", background: "#202124", borderRadius: "12px", border: "1px solid #3c4043", maxHeight: "200px", overflowY: "auto", width: "140px", boxShadow: "0 8px 24px rgba(0,0,0,0.8)" }}>
+              {LANGUAGE_OPTIONS.map((l) => (
+                <div key={l.value} onClick={() => { setTargetLang(l.value); setIsMenuOpen(false); }} style={{ padding: "10px 16px", color: "white", fontSize: "14px", cursor: "pointer", borderBottom: "1px solid #3c4043", fontWeight: targetLang === l.value ? "bold" : "normal", background: targetLang === l.value ? "#3b82f6" : "transparent" }}>
+                  {l.label}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {!isUnlocked && (
+          <button onClick={async () => {
+            await ensureAudioContext();
+            setIsUnlocked(true);
+          }} style={{ marginLeft: "10px", background: "#3b82f6", color: "white", border: "none", padding: "6px 14px", borderRadius: "12px", fontWeight: "bold", cursor: "pointer" }}>
+            Activer IA
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+====================================================
+FILE : src/app/room/[roomId]/page.tsx
+====================================================
+"use client";
+
+import { Room, RoomEvent, Track, VideoPresets, createLocalAudioTrack, createLocalVideoTrack, type LocalAudioTrack, type LocalVideoTrack, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from "livekit-client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import RealtimeVoiceOverlay from "@/components/RealtimeVoiceOverlay";
+
+function VideoComponent({ track, label, subtitle }: { track: RemoteTrack | LocalVideoTrack, label: string, subtitle: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && track) track.attach(videoRef.current);
+    return () => { if (track) track.detach(); };
+  }, [track]);
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: "12px", overflow: "hidden", background: "#202124" }}>
+      <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover", transform: label === "Vous" ? "scaleX(-1)" : "none" }} playsInline autoPlay />
+
+      {subtitle && (
+        <div style={{ position: "absolute", bottom: "48px", left: "16px", right: "16px", textAlign: "center", background: "rgba(0,0,0,0.75)", color: "white", padding: "8px 12px", borderRadius: "8px", fontSize: "clamp(16px, 4vw, 24px)", fontWeight: "600", textShadow: "1px 1px 2px black", zIndex: 10 }}>
+          {subtitle}
+        </div>
+      )}
+      <div style={{ position: "absolute", bottom: "12px", left: "16px", background: "rgba(0,0,0,0.6)", color: "white", padding: "4px 10px", borderRadius: "8px", fontSize: "12px", fontWeight: "500", zIndex: 10 }}>{label}</div>
+    </div>
+  );
+}
+
+export default function RoomPage() {
+  const params = useParams<{ roomId: string }>();
+  const roomId = params.roomId;
+  const room = useMemo(() => new Room({ adaptiveStream: true, dynacast: true }), []);
+
+  const [localVideoTrack, setLocalVideoTrack] = useState<LocalVideoTrack | null>(null);
+  const [localAudioTrack, setLocalAudioTrack] = useState<LocalAudioTrack | null>(null);
+  const [remoteVideos, setRemoteVideos] = useState<Map<string, {track: RemoteTrack, participant: RemoteParticipant}>>(new Map());
+  const [subtitles, setSubtitles] = useState<Record<string, string>>({});
+
+  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [micEnabled, setMicEnabled] = useState(true);
+  const startedRef = useRef(false);
+  const subtitleTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    let mounted = true;
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    async function startRoom() {
+      try {
+        let userId = window.sessionStorage.getItem("instant-talk-user-id") || "user-" + Math.random().toString(36).slice(2, 10);
+        window.sessionStorage.setItem("instant-talk-user-id", userId);
+
+        const tokenRes = await fetch("/api/livekit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomName: roomId, userId }) });
+        const { token } = await tokenRes.json();
+        await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+
+        const videoTrack = await createLocalVideoTrack({ facingMode: "user", resolution: VideoPresets.h1080.resolution });
+        const audioTrack = await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true });
+
+        await room.localParticipant.publishTrack(videoTrack, { videoEncoding: VideoPresets.h1080.encoding, simulcast: true });
+        await room.localParticipant.publishTrack(audioTrack);
+
+        if (mounted) { setLocalVideoTrack(videoTrack); setLocalAudioTrack(audioTrack); }
+
+        const handleTrack = (track: RemoteTrack, participant: RemoteParticipant) => {
+          if (participant.identity.toLowerCase().includes("agent")) return;
+          if (participant.identity === room.localParticipant?.identity) return;
+
+          setRemoteVideos(prev => {
+            const newMap = new Map(prev);
+            newMap.set(participant.sid, { track, participant });
+            return newMap;
+          });
+        };
+
+        room.remoteParticipants.forEach(p => {
+          p.videoTrackPublications.forEach(pub => { if (pub.track) handleTrack(pub.track as RemoteTrack, p); });
+        });
+
+        room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+          if (track.kind === Track.Kind.Video) handleTrack(track, participant);
+          else if (track.kind === Track.Kind.Audio) document.body.appendChild(track.attach());
+        });
+
+        room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+          if (track.kind === Track.Kind.Video) {
+            setRemoteVideos(prev => { const newMap = new Map(prev); newMap.delete(participant.sid); return newMap; });
+          }
+          track.detach().forEach(el => el.remove());
+        });
+
+        room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+          setRemoteVideos(prev => { const newMap = new Map(prev); newMap.delete(participant.sid); return newMap; });
+          const existingTimer = subtitleTimeoutsRef.current.get(participant.identity);
+          if (existingTimer) {
+            clearTimeout(existingTimer);
+            subtitleTimeoutsRef.current.delete(participant.identity);
+          }
+          setSubtitles(prev => ({ ...prev, [participant.identity]: "" }));
+        });
+
+        room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
+          try {
+            const data = JSON.parse(new TextDecoder().decode(payload));
+            if (!participant) return;
+
+            if (data.type === "subtitle_partial") {
+              setSubtitles(prev => ({ ...prev, [participant.identity]: data.text }));
+              return;
+            }
+
+            if (data.type === "subtitle") {
+              setSubtitles(prev => ({ ...prev, [participant.identity]: data.text }));
+
+              const existingTimer = subtitleTimeoutsRef.current.get(participant.identity);
+              if (existingTimer) {
+                clearTimeout(existingTimer);
+              }
+
+              const timeout = setTimeout(() => {
+                setSubtitles(prev => ({ ...prev, [participant.identity]: "" }));
+                subtitleTimeoutsRef.current.delete(participant.identity);
+              }, 4000);
+
+              subtitleTimeoutsRef.current.set(participant.identity, timeout);
+              return;
+            }
+
+            if (data.type === "trace") {
+              console.log("[ROOM_TRACE]", participant.identity, data);
+            }
+          } catch {}
+        });
+
+      } catch (err) {}
+    }
+    startRoom();
+
+    return () => {
+      mounted = false;
+      startedRef.current = false;
+
+      subtitleTimeoutsRef.current.forEach((timer) => clearTimeout(timer));
+      subtitleTimeoutsRef.current.clear();
+
+      room.removeAllListeners();
+      localVideoTrack?.stop();
+      localAudioTrack?.stop();
+      room.disconnect();
+    };
+  }, [room, roomId]);
+
+  async function toggleCamera() {
+    if (!localVideoTrack) return;
+    if (localVideoTrack.isMuted) { await localVideoTrack.unmute(); setCameraEnabled(true); }
+    else { await localVideoTrack.mute(); setCameraEnabled(false); }
+  }
+
+  async function toggleMic() {
+    if (!localAudioTrack) return;
+    if (localAudioTrack.isMuted) { await localAudioTrack.unmute(); setMicEnabled(true); }
+    else { await localAudioTrack.mute(); setMicEnabled(false); }
+  }
+
+  const remoteVideosArray = Array.from(remoteVideos.values());
+
+  return (
+    <div style={{ width: "100vw", height: "100dvh", background: "#202124", display: "flex", flexDirection: "column", fontFamily: "sans-serif" }}>
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: remoteVideosArray.length === 0 ? "1fr" : "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px", padding: "16px", paddingBottom: "100px" }}>
+        {localVideoTrack && <VideoComponent track={localVideoTrack} label="Vous" subtitle={room.localParticipant ? subtitles[room.localParticipant.identity] : ""} />}
+        {remoteVideosArray.map((rv) => <VideoComponent key={rv.track.sid} track={rv.track} label={rv.participant.identity || "Participant"} subtitle={subtitles[rv.participant.identity] || ""} />)}
+      </div>
+
+      <div style={{ height: "80px", background: "#202124", display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50 }}>
+        <button onClick={toggleMic} style={{ width: "56px", height: "56px", borderRadius: "50%", background: micEnabled ? "#3c4043" : "#ea4335", color: "white", border: "none", fontSize: "24px", cursor: "pointer" }}>{micEnabled ? "🎤" : "🔇"}</button>
+        <button onClick={toggleCamera} style={{ width: "56px", height: "56px", borderRadius: "50%", background: cameraEnabled ? "#3c4043" : "#ea4335", color: "white", border: "none", fontSize: "24px", cursor: "pointer" }}>{cameraEnabled ? "📷" : "🚫"}</button>
+        <button onClick={() => { room.disconnect(); window.location.href = "/dashboard"; }} style={{ width: "64px", height: "40px", borderRadius: "20px", background: "#ea4335", color: "white", border: "none", fontWeight: "bold", cursor: "pointer" }}>Fin</button>
+      </div>
+
+      <RealtimeVoiceOverlay
+        room={room}
+        localAudioTrack={localAudioTrack}
+        muteOriginalMic={async () => { await localAudioTrack?.mute(); setMicEnabled(false); }}
+        unmuteOriginalMic={async () => { await localAudioTrack?.unmute(); setMicEnabled(true); }}
+      />
+    </div>
+  );
+}
+
+====================================================
+FILE : src/app/api/translate/route.ts
+====================================================
+import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+export const runtime = "nodejs";
+
+function normalizeLang(lang: unknown) {
+  return String(lang ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z-]/g, "");
+}
+
+function nowMs() {
+  return Date.now();
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      cache: "no-store",
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const startedAt = nowMs();
+  const traceId = req.headers.get("x-trace-id") || crypto.randomUUID();
+  const clientSpeechFinalAt = Number(req.headers.get("x-client-speech-final-at") || "0") || null;
+
+  try {
+    const { text, targetLang, sourceLang } = await req.json();
+
+    const cleanText = String(text ?? "").trim();
+    const normalizedTarget = normalizeLang(targetLang);
+    const normalizedSource = normalizeLang(sourceLang);
+
+    if (!cleanText || !normalizedTarget) {
+      return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
+    }
+
+    if (normalizedSource && normalizedSource === normalizedTarget) {
+      return NextResponse.json({
+        translatedText: cleanText,
+        provider: "bypass",
+        detectedSourceLang: normalizedSource,
+        traceId,
+        timing: {
+          startedAt,
+          finishedAt: nowMs(),
+          durationMs: nowMs() - startedAt,
+          clientSpeechFinalAt,
+        },
+      });
+    }
+
+    const deeplKey = process.env.DEEPL_API_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY;
+
+    if (deeplKey) {
+      try {
+        const params = new URLSearchParams();
+        params.append("text", cleanText);
+        params.append("target_lang", normalizedTarget);
+
+        if (normalizedSource) {
+          params.append("source_lang", normalizedSource);
+        }
+
+        const providerStartedAt = nowMs();
+
+        const response = await fetchWithTimeout(
+          "https://api.deepl.com/v2/translate",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `DeepL-Auth-Key ${deeplKey}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: params.toString(),
+          },
+          1800
+        );
+
+        const raw = await response.text();
+
+        if (response.ok) {
+          const data = JSON.parse(raw);
+          const finishedAt = nowMs();
+
+          return NextResponse.json({
+            translatedText: data?.translations?.[0]?.text ?? cleanText,
+            provider: "deepl",
+            detectedSourceLang: data?.translations?.[0]?.detected_source_language ?? normalizedSource ?? null,
+            traceId,
+            timing: {
+              startedAt,
+              providerStartedAt,
+              finishedAt,
+              durationMs: finishedAt - startedAt,
+              providerDurationMs: finishedAt - providerStartedAt,
+              clientSpeechFinalAt,
+            },
+          });
+        }
+      } catch (error) {
+        console.warn("DeepL fast path failed:", error);
+      }
+    }
+
+    if (geminiKey) {
+      try {
+        const genAI = new GoogleGenerativeAI(geminiKey);
+        const model = genAI.getGenerativeModel({
+          model: "gemini-2.5-flash",
+        });
+
+        const prompt =
+          `Translate the following spoken sentence into ${normalizedTarget}. ` +
+          `Return only the translated sentence. No quotes. No markdown. ` +
+          `Keep it natural and concise. Sentence: ${cleanText}`;
+
+        const providerStartedAt = nowMs();
+
+        const result = await Promise.race([
+          model.generateContent(prompt),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Gemini timeout")), 2500)
+          ),
+        ]) as Awaited<ReturnType<typeof model.generateContent>>;
+
+        const translatedText = result.response.text().trim();
+
+        if (translatedText) {
+          const finishedAt = nowMs();
+
+          return NextResponse.json({
+            translatedText,
+            provider: "gemini",
+            detectedSourceLang: normalizedSource || null,
+            traceId,
+            timing: {
+              startedAt,
+              providerStartedAt,
+              finishedAt,
+              durationMs: finishedAt - startedAt,
+              providerDurationMs: finishedAt - providerStartedAt,
+              clientSpeechFinalAt,
+            },
+          });
+        }
+      } catch (error) {
+        console.warn("Gemini fallback failed:", error);
+      }
+    }
+
+    return NextResponse.json(
+      { error: "No translation provider available", traceId },
+      { status: 500 }
+    );
+  } catch (error) {
+    console.error("Translate error:", error);
+    return NextResponse.json({ error: "Translation failed", traceId }, { status: 500 });
+  }
+}
+
+====================================================
+FILE : src/app/api/elevenlabs-tts/route.ts
+====================================================
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
+const DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
+const DEFAULT_MODEL_ID = "eleven_flash_v2_5";
+
+function nowMs() {
+  return Date.now();
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      cache: "no-store",
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function POST(req: Request) {
+  const startedAt = nowMs();
+  const traceId = req.headers.get("x-trace-id") || crypto.randomUUID();
+
+  try {
+    const body = await req.json();
+    const { text, voiceId } = body;
+
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json({ error: "Cle ElevenLabs manquante", traceId }, { status: 500 });
+    }
+
+    const cleanText = String(text ?? "").trim();
+    if (!cleanText) {
+      return NextResponse.json({ error: "Texte manquant", traceId }, { status: 400 });
+    }
+
+    const resolvedVoiceId = String(voiceId || DEFAULT_VOICE_ID).trim();
+
+    const providerStartedAt = nowMs();
+
+    const response = await fetchWithTimeout(
+      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream?optimize_streaming_latency=3&output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          "Accept": "audio/mpeg",
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          model_id: DEFAULT_MODEL_ID,
+          voice_settings: {
+            stability: 0.3,
+            similarity_boost: 0.7,
+          },
+        }),
+      },
+      15000
+    );
+
+    const firstByteAt = nowMs();
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.error("ElevenLabs streaming error:", response.status, errText);
+      return NextResponse.json(
+        {
+          error: `Erreur ElevenLabs: ${response.status}`,
+          traceId,
+          timing: {
+            startedAt,
+            providerStartedAt,
+            firstByteAt,
+            durationMs: firstByteAt - startedAt,
+            providerDurationMs: firstByteAt - providerStartedAt,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    return new NextResponse(response.body, {
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "x-trace-id": traceId,
+        "x-tts-started-at": String(startedAt),
+        "x-tts-provider-started-at": String(providerStartedAt),
+        "x-tts-first-byte-at": String(firstByteAt),
+      },
+    });
+  } catch (error) {
+    console.error("TTS route error:", error);
+    return NextResponse.json({ error: "Erreur TTS", traceId }, { status: 500 });
+  }
+}
+

@@ -5,9 +5,10 @@ import { meetingStatusFromDates } from "@/lib/meetings";
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_: NextRequest, ctx: Params) {
+  const db = prisma as any;
   const { id } = await ctx.params;
 
-  const meeting = await prisma.meeting.findUnique({
+  const meeting = await db.meeting.findUnique({
     where: { id },
     include: {
       invitees: true,
@@ -23,10 +24,11 @@ export async function GET(_: NextRequest, ctx: Params) {
 }
 
 export async function PATCH(req: NextRequest, ctx: Params) {
+  const db = prisma as any;
   const { id } = await ctx.params;
   const body = await req.json();
 
-  const current = await prisma.meeting.findUnique({ where: { id } });
+  const current = await db.meeting.findUnique({ where: { id } });
 
   if (!current) {
     return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
@@ -39,7 +41,7 @@ export async function PATCH(req: NextRequest, ctx: Params) {
     return NextResponse.json({ error: "invalid_meeting_range" }, { status: 400 });
   }
 
-  const meeting = await prisma.meeting.update({
+  const meeting = await db.meeting.update({
     where: { id },
     data: {
       title: body.title ?? current.title,
@@ -59,9 +61,10 @@ export async function PATCH(req: NextRequest, ctx: Params) {
 }
 
 export async function DELETE(_: NextRequest, ctx: Params) {
+  const db = prisma as any;
   const { id } = await ctx.params;
 
-  await prisma.meeting.delete({
+  await db.meeting.delete({
     where: { id },
   });
 

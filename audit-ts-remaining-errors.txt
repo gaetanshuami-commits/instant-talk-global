@@ -1,0 +1,667 @@
+﻿=== AUDIT DES ERREURS TYPESCRIPT RESTANTES ===
+
+====================================================
+FILE : agent.ts
+====================================================
+import { WorkerOptions, cli, defineAgent, JobContext } from '@livekit/agents';
+import * as openai from '@livekit/agents-plugin-openai';
+import dotenv from 'dotenv';
+
+// 1. Charge les variables du fichier Next.js
+dotenv.config({ path: '.env.local' });
+
+// 2. CORRECTION DU BUG LOCALHOST : On relie l'URL de Next.js à l'Agent
+process.env.LIVEKIT_URL = process.env.LIVEKIT_URL || process.env.NEXT_PUBLIC_LIVEKIT_URL;
+
+export default defineAgent({
+  entry: async (ctx: JobContext) => {
+    await ctx.connect();
+    console.log("✅ Agent OpenAI temps réel connecté au Cloud LiveKit !");
+
+    const agent = new openai.realtime.RealtimeAgent({
+      model: 'gpt-4o-realtime-preview',
+      instructions: "Tu es un traducteur simultané humain et professionnel. Ton rôle est d'écouter la conversation. Si la personne parle en français, tu traduis en anglais avec une voix fluide. Si elle parle en anglais, tu traduis en français. Ne fais aucun commentaire, traduis juste ce que tu entends avec le ton le plus naturel possible.",
+      voice: 'alloy', 
+    });
+
+    await agent.start(ctx.room);
+  },
+});
+
+cli.runApp(new WorkerOptions({ agent: __filename }));
+
+
+====================================================
+FILE : components/LocalCamera.tsx
+====================================================
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { useLocalParticipant } from '@livekit/components-react';
+import { createLocalVideoTrack, Track } from 'livekit-client';
+
+export default function LocalCamera() {
+  const { localParticipant } = useLocalParticipant();
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!localParticipant) return;
+
+    let isMounted = true;
+    let localTrack: any = null;
+
+    const startProCamera = async () => {
+      try {
+        // 1. Nettoyage absolu pour éviter les conflits de flux
+        const existingTracks = Array.from(localParticipant.videoTrackPublications.values());
+        for (const pub of existingTracks) {
+          if (pub.source === Track.Source.Camera && pub.track) {
+            pub.track.stop();
+            await localParticipant.unpublishTrack(pub.track);
+          }
+        }
+
+        // 2. Standards exacts Zoom / Google Meet (16:9, 1080p idéal, fallback 720p propre)
+        localTrack = await createLocalVideoTrack({
+          resolution: { 
+            width: { ideal: 1920, min: 1280 }, 
+            height: { ideal: 1080, min: 720 }, 
+            frameRate: { ideal: 30, max: 30 },
+            aspectRatio: 1.777777778
+          },
+          facingMode: 'user',
+        });
+
+        if (!isMounted) {
+          localTrack.stop();
+          return;
+        }
+
+        // 3. Publication optimisée
+        await localParticipant.publishTrack(localTrack, {
+          simulcast: true, // Requis pour une qualité stable multiclients (comme Zoom)
+          source: Track.Source.Camera,
+          videoCodec: 'vp8',
+        });
+
+        // 4. Attachement direct pour bypasser le CSS restrictif de LiveKit
+        if (videoRef.current) {
+          videoRef.current.srcObject = localTrack.mediaStream;
+        }
+      } catch (error) {
+        console.error('Erreur Caméra Pro (Type Zoom/Meet):', error);
+      }
+    };
+
+    startProCamera();
+
+    return () => {
+      isMounted = false;
+      if (localTrack) {
+        localTrack.stop();
+        if (localParticipant) {
+          localParticipant.unpublishTrack(localTrack).catch(() => {});
+        }
+      }
+    };
+  }, [localParticipant]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        display: 'block',
+        // Le standard visuel Zoom/Meet : ta main gauche physique est à GAUCHE de ton moniteur
+        transform: 'scaleX(-1)',
+        WebkitTransform: 'scaleX(-1)'
+      }}
+    />
+  );
+}
+
+
+====================================================
+FILE : src/app/api/deepgram-bridge/route.ts
+====================================================
+import { NextRequest } from 'next/server';
+import { WebSocketServer } from 'ws';
+
+let wss: WebSocketServer | null = null;
+
+export async function GET(req: NextRequest) {
+  if (req.headers.get('upgrade') !== 'websocket') {
+    return new Response('Not WebSocket', { status: 400 });
+  }
+
+  const { socket, head } = await req.socket;
+
+  if (!wss) {
+    wss = new WebSocketServer({ noServer: true });
+  }
+
+  wss.handleUpgrade(socket, head, async (ws) => {
+    const dgUrl = 'ws://127.0.0.1:8787';
+    let dgWs: any = null;
+
+    ws.on('message', (data) => {
+      if (dgWs?.readyState === 1) {
+        dgWs.send(data);
+      }
+    });
+
+    ws.on('close', () => {
+      if (dgWs) {
+        dgWs.close();
+        dgWs = null;
+      }
+    });
+
+    try {
+      const { WebSocket } = await import('ws');
+      dgWs = new WebSocket(dgUrl);
+
+      dgWs.on('message', (data: any) => {
+        if (ws.readyState === 1) {
+          ws.send(data);
+        }
+      });
+
+      dgWs.on('open', () => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'bridge_ready' }));
+        }
+      });
+
+      dgWs.on('close', () => {
+        ws.close();
+      });
+
+      dgWs.on('error', (error: any) => {
+        console.error('[API] DG error:', error);
+        ws.close();
+      });
+    } catch (error) {
+      console.error('[API] Error:', error);
+      ws.close();
+    }
+  });
+
+  return new Response(null, { status: 101 });
+}
+
+
+====================================================
+FILE : src/app/api/meetings/[id]/invite/route.ts
+====================================================
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { buildMeetingLink } from "@/lib/meetings";
+import { sendMeetingInvitationEmail } from "@/lib/email";
+
+type Params = { params: Promise<{ id: string }> };
+
+export async function POST(req: NextRequest, ctx: Params) {
+  const { id } = await ctx.params;
+
+  const meeting = await prisma.meeting.findUnique({
+    where: { id },
+    include: { invitees: true },
+  });
+
+  if (!meeting) {
+    return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
+  }
+
+  const origin = req.nextUrl.origin;
+  const joinLink = buildMeetingLink(origin, meeting.roomId, meeting.inviteToken);
+
+  const results = [];
+
+  for (const invitee of meeting.invitees) {
+    const result = await sendMeetingInvitationEmail({
+      to: invitee.email,
+      subject: `Invitation réunion : ${meeting.title}`,
+      html: `
+        <div style="font-family:Arial,sans-serif">
+          <h2>${meeting.title}</h2>
+          <p>Début : ${meeting.startsAt.toLocaleString("fr-FR")}</p>
+          <p>Fin : ${meeting.endsAt.toLocaleString("fr-FR")}</p>
+          <p><a href="${joinLink}">Rejoindre la réunion</a></p>
+        </div>
+      `,
+    });
+
+    if (result.sent) {
+      await prisma.meetingInvite.update({
+        where: { id: invitee.id },
+        data: { status: "SENT" },
+      });
+    }
+
+    results.push({
+      email: invitee.email,
+      ...result,
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    joinLink,
+    results,
+  });
+}
+
+
+====================================================
+FILE : src/app/api/meetings/[id]/route.ts
+====================================================
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { meetingStatusFromDates } from "@/lib/meetings";
+
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_: NextRequest, ctx: Params) {
+  const { id } = await ctx.params;
+
+  const meeting = await prisma.meeting.findUnique({
+    where: { id },
+    include: {
+      invitees: true,
+      reminders: true,
+    },
+  });
+
+  if (!meeting) {
+    return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ meeting });
+}
+
+export async function PATCH(req: NextRequest, ctx: Params) {
+  const { id } = await ctx.params;
+  const body = await req.json();
+
+  const current = await prisma.meeting.findUnique({ where: { id } });
+
+  if (!current) {
+    return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
+  }
+
+  const startsAt = body.startsAt ? new Date(body.startsAt) : current.startsAt;
+  const endsAt = body.endsAt ? new Date(body.endsAt) : current.endsAt;
+
+  if (endsAt.getTime() <= startsAt.getTime()) {
+    return NextResponse.json({ error: "invalid_meeting_range" }, { status: 400 });
+  }
+
+  const meeting = await prisma.meeting.update({
+    where: { id },
+    data: {
+      title: body.title ?? current.title,
+      description: body.description ?? current.description,
+      startsAt,
+      endsAt,
+      timezone: body.timezone ?? current.timezone,
+      status: meetingStatusFromDates(startsAt, endsAt) as any,
+    },
+    include: {
+      invitees: true,
+      reminders: true,
+    },
+  });
+
+  return NextResponse.json({ meeting });
+}
+
+export async function DELETE(_: NextRequest, ctx: Params) {
+  const { id } = await ctx.params;
+
+  await prisma.meeting.delete({
+    where: { id },
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+
+====================================================
+FILE : src/app/api/meetings/reminders/route.ts
+====================================================
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { buildMeetingLink } from "@/lib/meetings";
+import { sendMeetingInvitationEmail } from "@/lib/email";
+
+export async function POST(req: NextRequest) {
+  const now = new Date();
+
+  const reminders = await prisma.meetingReminder.findMany({
+    where: {
+      sentAt: null,
+      remindAt: { lte: now },
+    },
+    include: {
+      meeting: {
+        include: {
+          invitees: true,
+        },
+      },
+    },
+  });
+
+  const origin = req.nextUrl.origin;
+  const sentIds: string[] = [];
+
+  for (const reminder of reminders) {
+    const joinLink = buildMeetingLink(origin, reminder.meeting.roomId, reminder.meeting.inviteToken);
+
+    for (const invitee of reminder.meeting.invitees) {
+      await sendMeetingInvitationEmail({
+        to: invitee.email,
+        subject: `Rappel réunion : ${reminder.meeting.title}`,
+        html: `
+          <div style="font-family:Arial,sans-serif">
+            <h2>Rappel réunion</h2>
+            <p>${reminder.meeting.title}</p>
+            <p>Début : ${reminder.meeting.startsAt.toLocaleString("fr-FR")}</p>
+            <p><a href="${joinLink}">Rejoindre maintenant</a></p>
+          </div>
+        `,
+      });
+    }
+
+    await prisma.meetingReminder.update({
+      where: { id: reminder.id },
+      data: { sentAt: new Date() },
+    });
+
+    sentIds.push(reminder.id);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    sentCount: sentIds.length,
+    sentIds,
+  });
+}
+
+
+====================================================
+FILE : src/app/camera-debug/page.tsx
+====================================================
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+type CameraDebug = {
+  deviceLabel: string;
+  deviceId: string;
+  width: number | string;
+  height: number | string;
+  frameRate: number | string;
+  aspectRatio: number | string;
+  facingMode: string;
+  resizeMode: string;
+  transformInline: string;
+  transformComputed: string;
+  objectFitInline: string;
+  objectFitComputed: string;
+  readyState: number;
+};
+
+export default function CameraDebugPage() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [error, setError] = useState("");
+  const [debug, setDebug] = useState<CameraDebug | null>(null);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+
+    async function run() {
+      try {
+        const devicesBefore = await navigator.mediaDevices.enumerateDevices();
+
+        const preferredCamera =
+          devicesBefore.find(
+            (d) =>
+              d.kind === "videoinput" &&
+              /front|facetime|integrated|webcam|camera/i.test(d.label)
+          ) ||
+          devicesBefore.find((d) => d.kind === "videoinput");
+
+        const constraints: MediaStreamConstraints = {
+          audio: false,
+          video: preferredCamera?.deviceId
+            ? {
+                deviceId: { exact: preferredCamera.deviceId },
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 30, max: 30 },
+                aspectRatio: { ideal: 16 / 9 },
+                facingMode: "user",
+                resizeMode: "crop-and-scale",
+              }
+            : {
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 30, max: 30 },
+                aspectRatio: { ideal: 16 / 9 },
+                facingMode: "user",
+                resizeMode: "crop-and-scale",
+              },
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        const videoTrack = stream.getVideoTracks()[0];
+        if (!videoTrack) throw new Error("Aucune piste vidéo trouvée");
+
+        try {
+          await videoTrack.applyConstraints({
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { ideal: 30, max: 30 },
+            aspectRatio: { ideal: 16 / 9 },
+            facingMode: "user",
+            resizeMode: "crop-and-scale",
+          });
+        } catch {}
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.muted = true;
+          videoRef.current.autoplay = true;
+          videoRef.current.playsInline = true;
+          videoRef.current.style.transform = "none";
+          videoRef.current.style.webkitTransform = "none";
+          videoRef.current.style.objectFit = "cover";
+          videoRef.current.style.setProperty("transform", "none", "important");
+          videoRef.current.style.setProperty("-webkit-transform", "none", "important");
+          videoRef.current.style.setProperty("object-fit", "cover", "important");
+          await videoRef.current.play().catch(() => {});
+        }
+
+        const settings = videoTrack.getSettings();
+        const computed = videoRef.current ? window.getComputedStyle(videoRef.current) : null;
+
+        const result: CameraDebug = {
+          deviceLabel: preferredCamera?.label || "inconnu",
+          deviceId: settings.deviceId || preferredCamera?.deviceId || "inconnu",
+          width: settings.width || 0,
+          height: settings.height || 0,
+          frameRate: settings.frameRate || 0,
+          aspectRatio: settings.aspectRatio || 0,
+          facingMode: String(settings.facingMode || ""),
+          resizeMode: String(settings.resizeMode || ""),
+          transformInline: videoRef.current?.style.transform || "",
+          transformComputed: computed?.transform || "",
+          objectFitInline: videoRef.current?.style.objectFit || "",
+          objectFitComputed: computed?.objectFit || "",
+          readyState: videoRef.current?.readyState || 0,
+        };
+
+        console.log("CAMERA_ROOT_CAUSE_DEBUG", result);
+        setDebug(result);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Erreur caméra inconnue";
+        console.error("CAMERA_ROOT_CAUSE_ERROR", e);
+        setError(message);
+      }
+    }
+
+    run();
+
+    return () => {
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "white",
+        padding: "24px",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "16px" }}>
+        Diagnostic caméra racine
+      </h1>
+
+      {error ? (
+        <div
+          style={{
+            background: "#7f1d1d",
+            border: "1px solid rgba(239,68,68,0.35)",
+            padding: "14px",
+            borderRadius: "12px",
+            marginBottom: "20px",
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "960px",
+          aspectRatio: "16 / 9",
+          overflow: "hidden",
+          borderRadius: "20px",
+          background: "#111827",
+          border: "1px solid rgba(255,255,255,0.08)",
+          marginBottom: "20px",
+        }}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            objectFit: "cover",
+            transform: "none",
+            WebkitTransform: "none",
+          }}
+        />
+      </div>
+
+      <pre
+        style={{
+          background: "#111827",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "16px",
+          padding: "16px",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          lineHeight: 1.5,
+        }}
+      >
+        {JSON.stringify(debug, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+
+====================================================
+FILE : src/lib/realtime/use-local-camera.ts
+====================================================
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { useLocalParticipant } from '@livekit/components-react';
+import { LocalParticipant } from 'livekit-client';
+
+export function useLocalCamera() {
+  const { localParticipant } = useLocalParticipant();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!localParticipant || !videoRef.current) return;
+
+    const initCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 },
+            facingMode: 'user',
+          },
+          audio: false,
+        });
+
+        const videoTrack = stream.getVideoTracks()[0];
+        if (!videoTrack) {
+          throw new Error('No video track');
+        }
+
+        const settings = videoTrack.getSettings();
+        console.log('[Camera]', {
+          width: settings.width,
+          height: settings.height,
+          frameRate: settings.frameRate,
+        });
+
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play();
+          setCameraReady(true);
+        };
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Camera error');
+        console.error('[Camera] Error:', err);
+      }
+    };
+
+    initCamera();
+
+    return () => {
+      if (videoRef.current?.srcObject) {
+        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+        tracks.forEach((track) => track.stop());
+      }
+    };
+  }, [localParticipant]);
+
+  return { videoRef, cameraReady, error };
+}
+
+

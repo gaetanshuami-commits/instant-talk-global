@@ -38,26 +38,26 @@ export default function CameraDebugPage() {
           ) ||
           devicesBefore.find((d) => d.kind === "videoinput");
 
+        const videoConstraints: MediaTrackConstraints = preferredCamera?.deviceId
+          ? {
+              deviceId: { exact: preferredCamera.deviceId },
+              width: { ideal: 1920, max: 1920 },
+              height: { ideal: 1080, max: 1080 },
+              frameRate: { ideal: 30, max: 30 },
+              aspectRatio: 16 / 9,
+              facingMode: "user",
+            }
+          : {
+              width: { ideal: 1920, max: 1920 },
+              height: { ideal: 1080, max: 1080 },
+              frameRate: { ideal: 30, max: 30 },
+              aspectRatio: 16 / 9,
+              facingMode: "user",
+            };
+
         const constraints: MediaStreamConstraints = {
           audio: false,
-          video: preferredCamera?.deviceId
-            ? {
-                deviceId: { exact: preferredCamera.deviceId },
-                width: { ideal: 1920, max: 1920 },
-                height: { ideal: 1080, max: 1080 },
-                frameRate: { ideal: 30, max: 30 },
-                aspectRatio: { ideal: 16 / 9 },
-                facingMode: "user",
-                resizeMode: "crop-and-scale",
-              }
-            : {
-                width: { ideal: 1920, max: 1920 },
-                height: { ideal: 1080, max: 1080 },
-                frameRate: { ideal: 30, max: 30 },
-                aspectRatio: { ideal: 16 / 9 },
-                facingMode: "user",
-                resizeMode: "crop-and-scale",
-              },
+          video: videoConstraints,
         };
 
         stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -70,9 +70,8 @@ export default function CameraDebugPage() {
             width: { ideal: 1920, max: 1920 },
             height: { ideal: 1080, max: 1080 },
             frameRate: { ideal: 30, max: 30 },
-            aspectRatio: { ideal: 16 / 9 },
+            aspectRatio: 16 / 9,
             facingMode: "user",
-            resizeMode: "crop-and-scale",
           });
         } catch {}
 
@@ -101,7 +100,7 @@ export default function CameraDebugPage() {
           frameRate: settings.frameRate || 0,
           aspectRatio: settings.aspectRatio || 0,
           facingMode: String(settings.facingMode || ""),
-          resizeMode: String(settings.resizeMode || ""),
+          resizeMode: "",
           transformInline: videoRef.current?.style.transform || "",
           transformComputed: computed?.transform || "",
           objectFitInline: videoRef.current?.style.objectFit || "",

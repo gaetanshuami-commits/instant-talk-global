@@ -1,89 +1,34 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, targetLang, sourceLang } = await req.json();
-
-    if (!text || !targetLang) {
-      return NextResponse.json(
-        { error: "Missing parameters" },
-        { status: 400 }
-      );
-    }
-
-    const geminiKey = process.env.GEMINI_API_KEY;
+    const { text, targetLang } = await req.json();
     const deeplKey = process.env.DEEPL_API_KEY;
 
-    if (geminiKey) {
-      try {
-        const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({
-          model: "gemini-2.5-flash",
-        });
+    if (!deeplKey) return NextResponse.json({ error: "Clé DeepL manquante" }, { status: 500 });
 
-        const prompt = `Translate this spoken sentence into ${targetLang}. Return only the translation, with no quotes and no markdown: ${text}`;
+    const isFree = deeplKey.endsWith(":fx");
+    const url = isFree ? "https://api-free.deepl.com/v2/translate" : "https://api.deepl.com/v2/translate";
 
-        const result = await model.generateContent(prompt);
-        const translatedText = result.response.text().trim();
+    // DeepL demande des codes spécifiques pour l'anglais et le portugais
+    let lang = targetLang.toUpperCase();
+    if (lang === "EN") lang = "EN-US";
+    if (lang === "PT") lang = "PT-PT";
 
-        if (translatedText) {
-          return NextResponse.json({
-            translatedText,
-            provider: "gemini",
-          });
-        }
-      } catch (error) {
-        console.warn("Gemini failed, fallback to DeepL:", error);
-      }
-    }
-
-    if (!deeplKey) {
-      return NextResponse.json(
-        { error: "No translation provider available" },
-        { status: 500 }
-      );
-    }
-
-    const params = new URLSearchParams();
-    params.append("text", text);
-    params.append("target_lang", String(targetLang).toUpperCase());
-
-    if (sourceLang) {
-      params.append("source_lang", String(sourceLang).toUpperCase());
-    }
-
-    const response = await fetch("https://api.deepl.com/v2/translate", {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `DeepL-Auth-Key ${deeplKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `DeepL-Auth-Key ${deeplKey}`,
+        "Content-Type": "application/json"
       },
-      body: params.toString(),
-      cache: "no-store",
+      body: JSON.stringify({ text: [text], target_lang: lang })
     });
 
-    const raw = await response.text();
-
-    if (!response.ok) {
-      throw new Error(raw);
-    }
-
-    const data = JSON.parse(raw);
-
-    return NextResponse.json({
-      translatedText: data?.translations?.[0]?.text ?? text,
-      provider: "deepl",
-      detectedSourceLang: data?.translations?.[0]?.detected_source_language ?? null,
-    });
+    if (!res.ok) throw new Error("Erreur serveur DeepL");
+    const data = await res.json();
+    
+    return NextResponse.json({ translatedText: data.translations[0].text });
   } catch (error) {
-    console.error("Translate error:", error);
-
-    return NextResponse.json(
-      { error: "Translation failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Échec traduction" }, { status: 500 });
   }
 }
