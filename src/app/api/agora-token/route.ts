@@ -1,52 +1,46 @@
 ﻿import { NextRequest, NextResponse } from "next/server"
-import pkg from "agora-access-token"
-
-const { RtcRole, RtcTokenBuilder } = pkg
+import { RtcRole, RtcTokenBuilder } from "agora-access-token"
 
 export async function GET(req: NextRequest) {
+  const channel = req.nextUrl.searchParams.get("channel")
+
+  if (!channel) {
+    return NextResponse.json({ error: "Missing channel parameter" }, { status: 400 })
+  }
+
+  const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE
+
+  if (!appId || !appCertificate) {
+    return NextResponse.json({ error: "Missing Agora credentials" }, { status: 500 })
+  }
+
   try {
-    const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE
-
-    if (!appId || !appCertificate) {
-      return NextResponse.json(
-        { error: "Variables Agora manquantes" },
-        { status: 500 }
-      )
-    }
-
-    const roomId = req.nextUrl.searchParams.get("roomId")
-    if (!roomId) {
-      return NextResponse.json(
-        { error: "roomId manquant" },
-        { status: 400 }
-      )
-    }
-
-    const uid = Math.floor(Math.random() * 1000000)
-    const expirationSeconds = 3600
-    const currentTimestamp = Math.floor(Date.now() / 1000)
-    const privilegeExpiredTs = currentTimestamp + expirationSeconds
+    const uid = 0
+    const expire = Math.floor(Date.now() / 1000) + 3600
 
     const token = RtcTokenBuilder.buildTokenWithUid(
       appId,
       appCertificate,
-      roomId,
+      channel,
       uid,
       RtcRole.PUBLISHER,
-      privilegeExpiredTs
+      expire
     )
 
     return NextResponse.json({
+      appId,
+      channel,
       token,
       uid,
-      channel: roomId,
-      expiresIn: expirationSeconds
+      expire
     })
   } catch (error) {
-    console.error("agora-token route error:", error)
     return NextResponse.json(
-      { error: "Impossible de générer le token Agora" },
+      {
+        error: "Failed to generate Agora token",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     )
   }
