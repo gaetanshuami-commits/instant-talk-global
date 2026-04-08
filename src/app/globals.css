@@ -1,7 +1,7 @@
 ﻿@import "tailwindcss";
 
 html {
-  scroll-behavior: smooth;
+  /* scroll-behavior managed per-component — removed to prevent Next.js router conflict */
 }
 
 body {
@@ -164,6 +164,6 @@ body {
 
 
 
-/* Fix LiveKit Camera Zoom */
-video { object-fit: contain !important; }
+/* Fix LiveKit Camera Zoom - scoped to avoid breaking Agora */
+.livekit-video video { object-fit: contain !important; }
 

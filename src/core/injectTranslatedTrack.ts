@@ -1,40 +1,18 @@
-import AgoraRTC from "agora-rtc-sdk-ng"
+import AgoraRTC, { ILocalAudioTrack, IAgoraRTCClient, IBufferSourceAudioTrack } from "agora-rtc-sdk-ng"
 
-let translatedTrack = null
+let translatedTrack: IBufferSourceAudioTrack | null = null
 
 export async function injectTranslatedTrack(
-  client,
-  audioBuffer
-) {
-  const blob = new Blob([audioBuffer], {
-    type: "audio/wav"
-  })
-
-  const url =
-    URL.createObjectURL(blob)
-
-  const audio =
-    new Audio(url)
-
+  client: IAgoraRTCClient,
+  audioBuffer: AudioBuffer
+): Promise<void> {
   if (translatedTrack) {
-    try {
-      await client.unpublish([
-        translatedTrack
-      ])
-    } catch {}
-
+    try { await client.unpublish([translatedTrack as unknown as ILocalAudioTrack]) } catch {}
     translatedTrack.close()
     translatedTrack = null
   }
 
-  translatedTrack =
-    await AgoraRTC.createBufferSourceAudioTrack({
-      source: audio
-    })
-
-  await client.publish([
-    translatedTrack
-  ])
-
-  await translatedTrack.start()
+  translatedTrack = await AgoraRTC.createBufferSourceAudioTrack({ source: audioBuffer })
+  await client.publish([translatedTrack as unknown as ILocalAudioTrack])
+  translatedTrack.startProcessAudioBuffer()
 }
