@@ -125,9 +125,29 @@ export async function startTranslation(
   callbacks: SubtitleCallbacks,
   ttsLang?: string,
   voiceGender: VoiceGender = "female",
-  getRemoteCount?: () => number
+  getRemoteCount?: () => number,
+  /** Plan-enforced language whitelist. null = all languages allowed. */
+  allowedLangs?: string[] | null
 ): Promise<void> {
   await stopTranslation()
+
+  // ── Language plan enforcement ────────────────────────────────────────────────
+  // allowedLangs is the server-returned whitelist for the caller's plan.
+  // null means no restriction (enterprise). If a requested language is outside
+  // the plan, it is silently dropped and the error callback fires.
+  const filteredTargets = allowedLangs
+    ? targetLangs.filter((lang) => {
+        if (allowedLangs.includes(lang)) return true
+        callbacks.onError?.(
+          `Language "${lang}" is not included in your current plan. Upgrade to Business or Enterprise to unlock more languages.`
+        )
+        return false
+      })
+    : targetLangs
+
+  // Reassign so the rest of the function uses the filtered list
+  // eslint-disable-next-line no-param-reassign
+  targetLangs = filteredTargets
 
   if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
   const sdk = _sdk

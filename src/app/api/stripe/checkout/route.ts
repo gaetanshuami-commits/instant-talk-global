@@ -5,20 +5,18 @@ export const runtime = "nodejs";
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
-  ? new Stripe(stripeKey, {
-      apiVersion: "2026-02-25.clover",
-    })
+  ? new Stripe(stripeKey, { apiVersion: "2026-02-25.clover" })
   : null;
 
 const PLAN_CONFIG = {
   premium: {
     name: "Instant Talk Premium",
-    description: "Premium monthly access to realtime multilingual meetings",
+    description: "Traduction vocale temps réel — jusqu'à 5 participants, 10 langues",
     unitAmount: 2400,
   },
   business: {
     name: "Instant Talk Business",
-    description: "Business monthly access for multilingual team meetings",
+    description: "Réunions d'équipe multilingues — jusqu'à 50 participants, 20 langues",
     unitAmount: 9900,
   },
 } as const;
@@ -36,24 +34,19 @@ function createCustomerRef() {
 export async function POST(req: Request) {
   try {
     if (!stripe) {
-      return NextResponse.json(
-        { error: "Missing STRIPE_SECRET_KEY" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
     }
 
     const body = await req.json().catch(() => ({}));
-    const rawPlan = String(body?.plan || "premium").toLowerCase();
+    const rawPlan  = String(body?.plan  || "premium").toLowerCase();
+    const withTrial = body?.trial === true;
 
     if (!isCheckoutPlan(rawPlan)) {
-      return NextResponse.json(
-        { error: "Invalid plan" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    const plan = PLAN_CONFIG[rawPlan];
-    const origin = new URL(req.url).origin;
+    const plan        = PLAN_CONFIG[rawPlan];
+    const origin      = new URL(req.url).origin;
     const customerRef = createCustomerRef();
 
     const session = await stripe.checkout.sessions.create({
@@ -68,9 +61,7 @@ export async function POST(req: Request) {
               name: plan.name,
               description: plan.description,
             },
-            recurring: {
-              interval: "month",
-            },
+            recurring: { interval: "month" },
             unit_amount: plan.unitAmount,
           },
           quantity: 1,
@@ -79,8 +70,12 @@ export async function POST(req: Request) {
       metadata: {
         plan: rawPlan,
         customerRef,
+        withTrial: withTrial ? "true" : "false",
       },
       subscription_data: {
+        // Real Stripe trial — subscription starts as "trialing", billing after 3 days.
+        // webhook will store trialEndsAt from subscription.trial_end.
+        ...(withTrial ? { trial_period_days: 3 } : {}),
         metadata: {
           plan: rawPlan,
           customerRef,
@@ -95,10 +90,10 @@ export async function POST(req: Request) {
       sessionId: session.id,
       plan: rawPlan,
       customerRef,
+      trial: withTrial,
     });
   } catch (error) {
     console.error("STRIPE_CHECKOUT_ERROR", error);
-
     return NextResponse.json(
       {
         error: "Stripe checkout failed",

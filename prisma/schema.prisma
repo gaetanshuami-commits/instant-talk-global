@@ -9,18 +9,35 @@ datasource db {
 }
 
 model Subscription {
-  id                   String   @id @default(cuid())
-  stripeCustomerId     String   @unique
-  stripeSubscriptionId String   @unique
+  id                   String    @id @default(cuid())
+  stripeCustomerId     String    @unique
+  stripeSubscriptionId String    @unique
   plan                 String
   status               String
   customerEmail        String?
   currentPeriodEnd     DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  trialEndsAt          DateTime?
+  enterpriseEnabled    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([plan])
   @@index([status])
+}
+
+// Tracks active participants per room channel.
+// Upserted at token generation; expires naturally (joinedAt > 2h = inactive).
+model RoomSlot {
+  id          String   @id @default(cuid())
+  channelName String
+  customerRef String
+  uid         Int
+  plan        String
+  joinedAt    DateTime @default(now())
+
+  @@unique([channelName, customerRef])
+  @@index([channelName])
+  @@index([joinedAt])
 }
 
 model Meeting {

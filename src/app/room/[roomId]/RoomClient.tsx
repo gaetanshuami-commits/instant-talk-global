@@ -11,6 +11,7 @@ import AgoraRTC, {
 import LanguageSelector from "@/components/LanguageSelector"
 import VoiceSelector    from "@/components/VoiceSelector"
 import type { VoiceGender } from "@/core/voiceEngine"
+import type { PlanCapabilities } from "@/lib/planCapabilities"
 
 // ─── Lazy voiceEngine — SDK loaded at room join (warmup), not at mount ────────
 type VoiceEngineModule = typeof import("@/core/voiceEngine")
@@ -45,6 +46,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const restartSeq     = useRef(0)
   const agoraTokenRef  = useRef<string>("")
   const agoraUidRef    = useRef<number | null>(null)
+  // Plan capabilities returned by /api/agora-token — used for language + participant limits
+  const planCapsRef    = useRef<PlanCapabilities | null>(null)
 
   // Keep a live ref to remote users for voiceEngine callback (no stale closure)
   useEffect(() => { remoteUsersRef.current = remoteUsers }, [remoteUsers])
@@ -114,8 +117,20 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         const data = await res.json()
         if (cancelled) return
 
+        // Subscription / participant-limit gate
+        if (!res.ok) {
+          const reason = data.code === "ROOM_FULL"
+            ? `Salle complète — votre plan autorise jusqu'à ${data.maxParticipants} participants.`
+            : (data.error || "Accès refusé. Vérifiez votre abonnement.")
+          console.error("[ROOM ACCESS]", reason)
+          setNetStatus("error")
+          return
+        }
+
         agoraTokenRef.current = data.token
         agoraUidRef.current   = data.uid
+        // Store plan capabilities for language enforcement in startTrans
+        if (data.caps) planCapsRef.current = data.caps
 
         // h264: hardware-accelerated encoding on most GPUs/CPUs (Intel QSV,
         // AMD VCE, Qualcomm). Frees significant CPU vs software VP8 encode,
@@ -317,7 +332,9 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       tgt,
       gender,
       // Solo guard: 0 remote users → TTS skipped (no self-translation)
-      () => remoteUsersRef.current.length
+      () => remoteUsersRef.current.length,
+      // Plan language whitelist — null means all allowed (enterprise)
+      planCapsRef.current?.allowedLangs ?? null
     )
   }, [publishInterpreter, showSubtitle])
 
