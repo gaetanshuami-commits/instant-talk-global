@@ -301,7 +301,21 @@ function MeetingsPageInner() {
                   cursor: "pointer",
                 }}
               >
-                Planifier
+              <button
+                onClick={createInstantMeeting}
+                style={{
+                  height: "48px",
+                  padding: "0 18px",
+                  borderRadius: "999px",
+                  border: "0",
+                  background: "linear-gradient(135deg, #2563eb, #4f46e5)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Nouvelle réunion
+              </button>                Planifier
               </button>
               <div
                 style={{
@@ -689,6 +703,7 @@ export default function MeetingsPage() {
     </Suspense>
   );
 }
+
 
 
 
