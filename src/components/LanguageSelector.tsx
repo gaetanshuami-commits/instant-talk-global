@@ -31,9 +31,11 @@ const LANGUAGES: LanguageOption[] = [
   { label: "Coréen", value: "ko" },
   { label: "Japonais", value: "ja" },
   { label: "Arabe", value: "ar" },
-  { label: "Mandarin (Chinois)", value: "zh-Hans" },
+  { label: "Mandarin (Chinois)", value: "zh" },
   { label: "Hindi", value: "hi" },
-  { label: "Swahili", value: "sw" }
+  { label: "Swahili", value: "sw" },
+  { label: "Thaï", value: "th" },
+  { label: "Vietnamien", value: "vi" },
 ]
 
 type Props = {
@@ -75,7 +77,7 @@ export default function LanguageSelector({
         className="flex h-12 items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 text-sm font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-white/15"
         aria-label={title}
       >
-        <span className="text-base">🌐</span>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0 text-white/70"><path strokeLinecap="round" strokeLinejoin="round" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm0 0c-1.933 0-3.5-3.582-3.5-8S8.067 2 10 2m0 16c1.933 0 3.5-3.582 3.5-8S11.933 2 10 2M2 10h16" /></svg>
         <span className="max-w-[110px] truncate">{current.label}</span>
       </button>
 

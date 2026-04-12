@@ -3,7 +3,7 @@ export async function translateText(
   targetLang: string,
   sourceLang?: string
 ) {
-  const res = await fetch("/api/translate", {
+  const res = await fetch("/api/platform-translate", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

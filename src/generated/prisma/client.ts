@@ -46,3 +46,48 @@ export { Prisma }
  * 
  */
 export type Subscription = Prisma.SubscriptionModel
+/**
+ * Model RoomSlot
+ * 
+ */
+export type RoomSlot = Prisma.RoomSlotModel
+/**
+ * Model Meeting
+ * 
+ */
+export type Meeting = Prisma.MeetingModel
+/**
+ * Model MeetingInvite
+ * 
+ */
+export type MeetingInvite = Prisma.MeetingInviteModel
+/**
+ * Model MeetingReminder
+ * 
+ */
+export type MeetingReminder = Prisma.MeetingReminderModel
+/**
+ * Model Contact
+ * 
+ */
+export type Contact = Prisma.ContactModel
+/**
+ * Model ChatRoom
+ * 
+ */
+export type ChatRoom = Prisma.ChatRoomModel
+/**
+ * Model ChatMessage
+ * 
+ */
+export type ChatMessage = Prisma.ChatMessageModel
+/**
+ * Model Webinar
+ * 
+ */
+export type Webinar = Prisma.WebinarModel
+/**
+ * Model UserSettings
+ * 
+ */
+export type UserSettings = Prisma.UserSettingsModel

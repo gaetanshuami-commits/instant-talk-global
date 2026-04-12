@@ -9,10 +9,16 @@ export async function POST(req: NextRequest, ctx: Params) {
   const db = prisma as any;
   const { id } = await ctx.params;
 
-  const meeting = await db.meeting.findUnique({
-    where: { id },
-    include: { invitees: true },
-  });
+  let meeting;
+  try {
+    meeting = await db.meeting.findUnique({
+      where: { id },
+      include: { invitees: true },
+    });
+  } catch (err) {
+    console.error("[invite POST db]", err);
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
+  }
 
   if (!meeting) {
     return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });

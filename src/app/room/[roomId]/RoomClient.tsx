@@ -1,17 +1,25 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react"
 import AgoraRTC, {
   IAgoraRTCClient,
   IAgoraRTCRemoteUser,
   ILocalAudioTrack,
   ILocalVideoTrack,
 } from "agora-rtc-sdk-ng"
+import dynamic from "next/dynamic"
+
+// Silence Agora SDK internal logs completely — only actual errors surface.
+// 4 = ERROR (0=DEBUG 1=INFO 2=WARN 3=ERROR 4=NONE in some builds; 4 suppresses all)
+AgoraRTC.setLogLevel(4)
 
 import LanguageSelector from "@/components/LanguageSelector"
 import VoiceSelector    from "@/components/VoiceSelector"
 import type { VoiceGender } from "@/core/voiceEngine"
 import type { PlanCapabilities } from "@/lib/planCapabilities"
+
+const AICompanion = dynamic(() => import("@/components/AICompanion"), { ssr: false })
+const Whiteboard  = dynamic(() => import("@/components/Whiteboard"),  { ssr: false })
 
 // ─── Lazy voiceEngine — SDK loaded at room join (warmup), not at mount ────────
 type VoiceEngineModule = typeof import("@/core/voiceEngine")
@@ -32,20 +40,46 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const [targetLang, setTargetLang]       = useState("en")
   const [voiceGender, setVoiceGender]     = useState<VoiceGender>("female")
   const [isTranslating, setIsTranslating] = useState(false)
-  const [subtitle, setSubtitle]           = useState<Subtitle | null>(null)
   const [remoteUsers, setRemoteUsers]     = useState<IAgoraRTCRemoteUser[]>([])
   const [localVideoTrack, setLocalVideoTrack] = useState<ILocalVideoTrack | null>(null)
   const [netStatus, setNetStatus]         = useState<"ok" | "reconnecting" | "error">("ok")
+
+  // ── New feature state ──────────────────────────────────────────────────────
+  const [isScreenSharing, setIsScreenSharing]   = useState(false)
+  const [showWhiteboard,  setShowWhiteboard]    = useState(false)
+  const [showAICompanion, setShowAICompanion]   = useState(false)
+  const [isANS,           setIsANS]             = useState(false)
+  const [ttsProvider,     setTtsProvider]       = useState<"elevenlabs" | "azure">("elevenlabs")
+  const [transcript,      setTranscript]        = useState<string[]>([])
+  const [cloneStatus, setCloneStatus]           = useState<"idle"|"recording"|"cloning"|"ready"|"error">("idle")
+  const screenTrackRef   = useRef<ILocalVideoTrack | null>(null)
+  const cloneVoiceIdRef  = useRef<string | null>(null)
+  const cloneRecorderRef = useRef<MediaRecorder | null>(null)
 
   const clientRef      = useRef<IAgoraRTCClient | null>(null)
   const tracksRef      = useRef<{ audio: ILocalAudioTrack; video: ILocalVideoTrack } | null>(null)
   const interpreterRef = useRef<ILocalAudioTrack | null>(null)
   const isInitializing = useRef(false)
-  const subtitleTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const subtitleRef    = useRef<SubtitleOverlayHandle | null>(null)
   const remoteUsersRef = useRef<IAgoraRTCRemoteUser[]>([])
   const restartSeq     = useRef(0)
   const agoraTokenRef  = useRef<string>("")
   const agoraUidRef    = useRef<number | null>(null)
+
+  // Tab-unique session ID — prevents two tabs sharing the same customerRef
+  // from getting the same Agora UID and conflicting in the same channel.
+  const sessionIdRef = useRef<string>(
+    typeof sessionStorage !== "undefined"
+      ? (() => {
+          const key = "itg_sid"
+          const existing = sessionStorage.getItem(key)
+          if (existing) return existing
+          const id = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+          sessionStorage.setItem(key, id)
+          return id
+        })()
+      : Math.random().toString(36).slice(2)
+  )
   // Plan capabilities returned by /api/agora-token — used for language + participant limits
   const planCapsRef    = useRef<PlanCapabilities | null>(null)
 
@@ -55,7 +89,22 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   // ─── Cleanup ────────────────────────────────────────────────────────────────
 
   const cleanup = useCallback(async () => {
-    if (_ve) await _ve.stopTranslation().catch(() => {})
+    if (_ve) {
+      await _ve.stopTranslation().catch(() => {})
+      _ve.setClonedVoiceId(null)
+    }
+
+    // Stop recording if in progress
+    if (cloneRecorderRef.current?.state === "recording") {
+      try { cloneRecorderRef.current.stop() } catch {}
+    }
+    cloneRecorderRef.current = null
+
+    // Delete the cloned voice from ElevenLabs to free the slot
+    if (cloneVoiceIdRef.current) {
+      fetch(`/api/clone-voice/${cloneVoiceIdRef.current}`, { method: "DELETE", keepalive: true }).catch(() => {})
+      cloneVoiceIdRef.current = null
+    }
 
     if (interpreterRef.current) {
       try { await clientRef.current?.unpublish(interpreterRef.current) } catch {}
@@ -77,12 +126,65 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       try { await clientRef.current.leave()        } catch {}
       clientRef.current = null
     }
-  }, [])
+
+    // Free the RoomSlot immediately — channel in URL so no body parsing needed
+    const leaveUrl = `/api/room-leave?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`
+    const beaconSent = typeof navigator !== "undefined" && navigator.sendBeacon(leaveUrl)
+    if (!beaconSent) {
+      fetch(leaveUrl, { method: "POST", keepalive: true }).catch(() => {})
+    }
+  }, [roomId])
 
   // ─── Manual rejoin after SDK gives up ───────────────────────────────────────
 
+  // ─── Restore video display + remote subscriptions after any reconnect ────────
+  // Called after both automatic reconnect (RECONNECTING → CONNECTED) and manual
+  // rejoin. Agora's SDK does NOT re-inject the local video element after reconnect,
+  // and may or may not re-fire user-published for remote users depending on version.
+
+  const restoreAfterReconnect = useCallback(async (client: IAgoraRTCClient) => {
+    // 1. Re-play local video — the Agora video element inside local-video-renderer
+    //    loses its srcObject binding during reconnect; re-calling play() restores it.
+    if (tracksRef.current?.video) {
+      try { tracksRef.current.video.play("local-video-renderer") } catch {}
+    }
+
+    // 2. Re-subscribe to every remote user currently reported by the SDK.
+    //    user-published may not re-fire for users who were already subscribed
+    //    before the disconnect — so we explicitly re-subscribe each one.
+    for (const user of client.remoteUsers) {
+      if (user.hasVideo) {
+        try { await client.subscribe(user, "video") } catch {}
+      }
+      if (user.hasAudio) {
+        try { await client.subscribe(user, "audio") } catch {}
+        try { user.audioTrack?.play() } catch {}
+      }
+    }
+
+    // 3. Sync React state: replace stale list with SDK's ground truth.
+    //    This re-creates tiles for users whose user-unpublished fired during disconnect.
+    const currentVideoUsers = client.remoteUsers.filter(u => u.hasVideo)
+    setRemoteUsers(currentVideoUsers)
+
+    // 4. Play each remote video — rAF retry waits for React to render new tiles.
+    for (const user of currentVideoUsers) {
+      const uid   = user.uid
+      const track = user.videoTrack
+      let n = 0
+      const go = () => {
+        if (document.getElementById(`rv-${uid}`)) {
+          try { track?.play(`rv-${uid}`) } catch {}
+        } else if (n++ < 40) requestAnimationFrame(go)
+      }
+      requestAnimationFrame(go)
+    }
+  }, [])
+
   const rejoin = useCallback(async (client: IAgoraRTCClient) => {
     if (!agoraTokenRef.current) return
+    // Agora's own reconnect may have already restored the connection — skip if so.
+    if (client.connectionState !== "DISCONNECTED") return
     setNetStatus("reconnecting")
     try {
       await client.join(
@@ -92,17 +194,23 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         agoraUidRef.current
       )
       if (tracksRef.current) {
+        // Tracks are left disabled after a disconnect — must re-enable before publish.
+        try { if (!tracksRef.current.audio.enabled) await tracksRef.current.audio.setEnabled(true) } catch {}
+        try { if (!tracksRef.current.video.enabled) await tracksRef.current.video.setEnabled(true) } catch {}
         await client.publish([tracksRef.current.audio, tracksRef.current.video])
       }
       if (interpreterRef.current) {
+        try { if (!interpreterRef.current.enabled) await interpreterRef.current.setEnabled(true) } catch {}
         await client.publish(interpreterRef.current)
       }
       setNetStatus("ok")
+      // Restore video display and remote subscriptions after manual rejoin
+      void restoreAfterReconnect(client)
     } catch (err) {
       console.error("[REJOIN]", err)
       setNetStatus("error")
     }
-  }, [roomId])
+  }, [roomId, restoreAfterReconnect])
 
   // ─── Agora init ─────────────────────────────────────────────────────────────
 
@@ -113,14 +221,14 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
     const start = async () => {
       try {
-        const res  = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}`)
+        const res  = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
         const data = await res.json()
         if (cancelled) return
 
         // Subscription / participant-limit gate
         if (!res.ok) {
           const reason = data.code === "ROOM_FULL"
-            ? `Salle complète — votre plan autorise jusqu'à ${data.maxParticipants} participants.`
+            ? `Salle complète. Votre plan autorise jusqu'à ${data.maxParticipants} participants.`
             : (data.error || "Accès refusé. Vérifiez votre abonnement.")
           console.error("[ROOM ACCESS]", reason)
           setNetStatus("error")
@@ -138,13 +246,18 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "h264" })
         clientRef.current = client
 
-        // Cloud Proxy mode 5 (TCP 443) — survives firewalls + background tabs
-        try { await client.startProxyServer(5) } catch {}
+        // Cloud proxy removed: direct UDP is available (ICE candidates resolve
+        // correctly) and startProxyServer(5) was generating spurious JSON_RPC
+        // errors in the console without providing any connectivity benefit.
+        if (cancelled) return
 
         // ── User media events ─────────────────────────────────────────────
         client.on("user-published", async (user, mediaType) => {
+          // Don't attempt subscribe while the peer connection is not ready —
+          // Agora will re-emit user-published after reconnect completes.
+          if (client.connectionState !== "CONNECTED") return
           try { await client.subscribe(user, mediaType) }
-          catch (err) { console.warn("[subscribe]", err); return }
+          catch { return }  // CONNECTED-guard above already prevents race; swallow silently
 
           if (mediaType === "video") {
             try {
@@ -182,10 +295,14 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         })
 
         client.on("connection-state-change", (cur, prev) => {
-          console.info(`[Agora] ${prev} → ${cur}`)
-          if (cur === "RECONNECTING") setNetStatus("reconnecting")
-          else if (cur === "CONNECTED") setNetStatus("ok")
-          else if (cur === "DISCONNECTED" && !cancelled) {
+          if (cur === "RECONNECTING") {
+            setNetStatus("reconnecting")
+          } else if (cur === "CONNECTED") {
+            setNetStatus("ok")
+            // After automatic SDK reconnect: re-play local video and re-subscribe
+            // remote users. The SDK does not do this automatically after RECONNECTING.
+            if (prev === "RECONNECTING") void restoreAfterReconnect(client)
+          } else if (cur === "DISCONNECTED" && !cancelled) {
             setTimeout(() => {
               if (!cancelled && clientRef.current === client) void rejoin(client)
             }, 3000)
@@ -193,30 +310,76 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         })
 
         client.on("exception", (evt) => {
-          console.warn("[Agora exception]", evt.code, evt.msg)
+          // 1005 = RECV_VIDEO_DECODE_FAILED — the remote video decoder stalled.
+          // Fix: unsubscribe the affected user then resubscribe to force a fresh keyframe.
+          if (evt.code === 1005 && evt.uid != null && client.connectionState === "CONNECTED") {
+            const bad = client.remoteUsers.find(u => u.uid === evt.uid)
+            if (bad?.hasVideo) {
+              void (async () => {
+                try {
+                  await client.unsubscribe(bad, "video")
+                  await new Promise<void>(r => setTimeout(r, 500))
+                  if (client.connectionState !== "CONNECTED") return
+                  await client.subscribe(bad, "video")
+                  bad.videoTrack?.play(`rv-${bad.uid}`)
+                } catch {}
+              })()
+            }
+          }
+          // All other exception codes (1003/2003 bitrate warnings, etc.) are already
+          // mitigated by the encoder config — no need to surface them.
+        })
+
+        // Network quality events are internal telemetry only — no console output.
+        client.on("network-quality", (_stats) => { /* silent telemetry */ })
+
+        // Token renewal — fires ~30 s before the Agora privilege expires.
+        // Without this handler the SDK disconnects silently when the token expires.
+        client.on("token-privilege-will-expire", () => {
+          void (async () => {
+            try {
+              const r2 = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
+              const d2 = await r2.json()
+              if (d2.token) {
+                agoraTokenRef.current = d2.token
+                await client.renewToken(d2.token)
+              }
+            } catch (e) { console.warn("[TOKEN RENEWAL]", e) }
+          })()
         })
 
         // ── Camera + mic ──────────────────────────────────────────────────
-        // Video: 1080p, 30fps, bitrateMin 1000, bitrateMax 3000 (as specified).
-        // optimizationMode "motion" keeps frame-rate stable under CPU load.
-        // Mic: AEC + ANS + AGC + high-quality profile for better STT accuracy.
+        // Audio: custom 16 kHz / 40 kbps encoder.
+        //   speech_low_quality preset (24 kbps) had no headroom: under network
+        //   pressure Agora reduced below 24 kbps → SEND_AUDIO_BITRATE_TOO_LOW
+        //   (exception 2003). 40 kbps gives enough margin without affecting STT.
+        //   ANS still off: Azure STT handles server-side noise suppression.
+        //
+        // Video: 720p target, bitrateMin 350, adaptive frame-rate (15–30 fps).
+        //   Previous config (1080p / bitrateMin 1000 / bitrateMax 3000) caused:
+        //   - SEND_VIDEO_BITRATE_TOO_LOW (1003) — encoder couldn't sustain 1000 kbps
+        //   - Packet loss from aggressive bitrate → RECV_VIDEO_DECODE_FAILED (1005)
+        //   - WebSocket ping timeouts from network saturation
+        //   New config lets the SDK adapt frame-rate before dropping bitrate,
+        //   keeping the video fluid on constrained connections.
         const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks(
           {
             AEC: true,
-            // ANS removed: Azure STT performs server-side noise suppression.
-            // Agora's local ANS was over-compressing the signal → AUDIO_INPUT_LEVEL_TOO_LOW
-            // (exception 2001) → STT missed words → bad translation.
             AGC: true,
-            encoderConfig: "speech_low_quality", // 16 kHz 24 kbps — optimised for voice/STT
+            encoderConfig: {
+              sampleRate: 16000,
+              stereo:     false,
+              bitrate:    40,   // 40 kbps — headroom over 24 kbps STT floor
+            },
           },
           {
             optimizationMode: "motion",
             encoderConfig: {
-              width:      { min: 1280, ideal: 1920 },
-              height:     { min: 720,  ideal: 1080 },
-              frameRate:  30,
-              bitrateMin: 1000,
-              bitrateMax: 3000,
+              width:      { min: 640,  ideal: 1280 },
+              height:     { min: 360,  ideal: 720  },
+              frameRate:  { min: 15,   ideal: 30   },
+              bitrateMin: 200,
+              bitrateMax: 1000,
             },
           }
         )
@@ -232,6 +395,49 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
         tracksRef.current = { audio, video }
         setLocalVideoTrack(video)
+
+        // ── Track-ended recovery ──────────────────────────────────────────
+        // Fires when the OS revokes the device (sleep, USB disconnect, permission
+        // change). Without this, the track dies silently and video/audio vanish.
+        video.on("track-ended", () => {
+          void (async () => {
+            try {
+              const newVideo = await AgoraRTC.createCameraVideoTrack({
+                optimizationMode: "motion",
+                encoderConfig: {
+                  width: { min: 640, ideal: 1280 }, height: { min: 360, ideal: 720 },
+                  frameRate: { min: 15, ideal: 30 }, bitrateMin: 200, bitrateMax: 1000,
+                },
+              })
+              if (!tracksRef.current || !clientRef.current) { newVideo.close(); return }
+              try { await clientRef.current.unpublish(tracksRef.current.video) } catch {}
+              try { tracksRef.current.video.close() } catch {}
+              tracksRef.current = { ...tracksRef.current, video: newVideo }
+              setLocalVideoTrack(newVideo)
+              if (clientRef.current.connectionState === "CONNECTED") {
+                await clientRef.current.publish(newVideo)
+              }
+            } catch (e) { console.warn("[CAMERA RECOVERY]", e) }
+          })()
+        })
+
+        audio.on("track-ended", () => {
+          void (async () => {
+            try {
+              const newAudio = await AgoraRTC.createMicrophoneAudioTrack({
+                AEC: true, AGC: true,
+                encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
+              })
+              if (!tracksRef.current || !clientRef.current) { newAudio.close(); return }
+              try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
+              try { tracksRef.current.audio.close() } catch {}
+              tracksRef.current = { ...tracksRef.current, audio: newAudio }
+              if (clientRef.current.connectionState === "CONNECTED") {
+                await clientRef.current.publish(newAudio)
+              }
+            } catch (e) { console.warn("[MIC RECOVERY]", e) }
+          })()
+        })
 
         await client.join(
           process.env.NEXT_PUBLIC_AGORA_APP_ID!,
@@ -251,10 +457,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
         setNetStatus("ok")
 
-        // ── Warmup Azure Speech SDK in background (Correction 5) ─────────
-        // Loads the SDK + fetches auth token while the user sees the video.
-        // When user clicks "Traduire", recognition starts in < 100 ms.
-        void getVE().then((ve) => ve.warmupSDK())
+        // ── Warmup Azure Speech SDK in background ─────────────────────────
+        void getVE().then((ve) => { ve.warmupSDK(); ve.setTTSProvider("elevenlabs") })
+
+        // ── Start voice clone capture in background (60s silent recording) ─
+        // By the time the user clicks "Traduire", the clone is ready.
+        void startVoiceClone()
 
       } catch (err) {
         console.error("[ROOM INIT]", err)
@@ -270,7 +478,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       isInitializing.current = false
       void cleanup()
     }
-  }, [roomId, cleanup, rejoin])
+  }, [roomId, cleanup, rejoin, restoreAfterReconnect])
 
   // Re-inject local video track after Fast Refresh
   useEffect(() => {
@@ -309,11 +517,139 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   // ─── Subtitles ───────────────────────────────────────────────────────────────
 
+  // Subtitle updates are pushed imperatively to SubtitleOverlay so that
+  // partial results (every ~300 ms) don't re-render the video grid at all.
   const showSubtitle = useCallback((lang: string, text: string, final: boolean) => {
-    setSubtitle({ lang, text, final })
-    if (subtitleTimer.current) clearTimeout(subtitleTimer.current)
-    if (final) subtitleTimer.current = setTimeout(() => setSubtitle(null), 5000)
+    subtitleRef.current?.show(lang, text, final)
+    if (final) {
+      // Accumulate transcript for AI Companion (last 120 lines)
+      setTranscript(prev => [...prev, `[${lang.toUpperCase()}] ${text}`].slice(-120))
+    }
   }, [])
+
+  // ── Screen share ────────────────────────────────────────────────────────────
+  const toggleScreenShare = useCallback(async () => {
+    if (!clientRef.current) return
+    if (isScreenSharing) {
+      if (screenTrackRef.current) {
+        try { await clientRef.current.unpublish(screenTrackRef.current) } catch {}
+        try { screenTrackRef.current.close() } catch {}
+        screenTrackRef.current = null
+      }
+      // Re-publish camera
+      if (tracksRef.current?.video) {
+        try { await clientRef.current.publish(tracksRef.current.video) } catch {}
+      }
+      setIsScreenSharing(false)
+    } else {
+      try {
+        const track = await AgoraRTC.createScreenVideoTrack(
+          { encoderConfig: { width: 1920, height: 1080, frameRate: 15, bitrateMin: 600, bitrateMax: 1500 } },
+          "disable"
+        ) as ILocalVideoTrack
+        if (tracksRef.current?.video) {
+          try { await clientRef.current.unpublish(tracksRef.current.video) } catch {}
+        }
+        await clientRef.current.publish(track)
+        screenTrackRef.current = track
+        setIsScreenSharing(true)
+        // Auto-stop when user dismisses native browser dialog
+        track.on("track-ended", () => {
+          void toggleScreenShare()
+        })
+      } catch (err) {
+        console.warn("[ScreenShare]", err)
+      }
+    }
+  }, [isScreenSharing])
+
+  // ── Smart Audio (ANS toggle) — recreate mic track ────────────────────────────
+  const toggleANS = useCallback(async () => {
+    if (!clientRef.current || !tracksRef.current) return
+    const next = !isANS
+    try {
+      // Unpublish current audio
+      await clientRef.current.unpublish(tracksRef.current.audio)
+      tracksRef.current.audio.stop()
+      tracksRef.current.audio.close()
+      // Recreate with ANS setting — same 16 kHz / 40 kbps encoder as main init
+      const audio = await AgoraRTC.createMicrophoneAudioTrack({
+        AEC: true, AGC: true, ANS: next,
+        encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
+      })
+      tracksRef.current = { ...tracksRef.current, audio }
+      if (!audio.enabled) await audio.setEnabled(true)
+      await clientRef.current.publish(audio)
+      setIsANS(next)
+    } catch (err) {
+      console.warn("[SmartAudio]", err)
+    }
+  }, [isANS])
+
+  // ─── TTS provider toggle ─────────────────────────────────────────────────────
+
+  const toggleTTSProvider = useCallback(async () => {
+    const next = ttsProvider === "elevenlabs" ? "azure" : "elevenlabs"
+    setTtsProvider(next)
+    if (_ve) _ve.setTTSProvider(next)
+  }, [ttsProvider])
+
+  // ─── Voice cloning — silent 60s capture after room join ─────────────────────
+
+  const startVoiceClone = useCallback(async () => {
+    // Only one clone session per room join; skip if already running or done
+    if (cloneStatus !== "idle") return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 44100, echoCancellation: true, noiseSuppression: true },
+      })
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm"
+
+      const chunks: Blob[] = []
+      const recorder = new MediaRecorder(stream, { mimeType })
+      cloneRecorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        cloneRecorderRef.current = null
+
+        const blob = new Blob(chunks, { type: mimeType })
+        if (blob.size < 50_000) { setCloneStatus("error"); return }
+
+        try {
+          setCloneStatus("cloning")
+          const body = new FormData()
+          body.append("audio", blob, "voice_sample.webm")
+
+          const res  = await fetch("/api/clone-voice", { method: "POST", body })
+          const data = await res.json()
+          if (!res.ok || !data.voiceId) throw new Error("No voiceId")
+
+          cloneVoiceIdRef.current = data.voiceId
+          const ve = await getVE()
+          ve.setClonedVoiceId(data.voiceId)
+          setCloneStatus("ready")
+        } catch {
+          setCloneStatus("error")
+        }
+      }
+
+      setCloneStatus("recording")
+      recorder.start(1000) // collect chunks every 1s
+      setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop()
+      }, 60_000)
+
+    } catch {
+      // getUserMedia denied or browser limitation — non-fatal
+      setCloneStatus("idle")
+    }
+  }, [cloneStatus])
 
   // ─── Translation ─────────────────────────────────────────────────────────────
 
@@ -327,14 +663,22 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       {
         onPartial: (lang, text) => showSubtitle(lang, text, false),
         onFinal:   (lang, text) => showSubtitle(lang, text, true),
-        onError:   (err) => console.error("[VoiceEngine]", err),
+        onError:   (err) => {
+          console.error("[VoiceEngine]", err)
+          // Stop translation on auth/quota failures that can't self-recover.
+          // Transient errors auto-restart in voiceEngine — only fatal errors stop the UI.
+          const isFatal = /authentication error|authentication failed|auth:|401|403|unauthorized|quota exceeded/i.test(err)
+          if (isFatal) {
+            setIsTranslating(false)
+            subtitleRef.current?.reset()
+          }
+        },
       },
       tgt,
       gender,
-      // Solo guard: 0 remote users → TTS skipped (no self-translation)
       () => remoteUsersRef.current.length,
-      // Plan language whitelist — null means all allowed (enterprise)
-      planCapsRef.current?.allowedLangs ?? null
+      // Dev: bypass plan restriction client-side too (planCapsRef may be stale after HMR)
+      process.env.NODE_ENV === "development" ? null : (planCapsRef.current?.allowedLangs ?? null)
     )
   }, [publishInterpreter, showSubtitle])
 
@@ -343,7 +687,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       const ve = await getVE()
       await ve.stopTranslation()
       setIsTranslating(false)
-      setSubtitle(null)
+      subtitleRef.current?.reset()
       return
     }
     try {
@@ -354,11 +698,14 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }
   }, [isTranslating, sourceLang, targetLang, voiceGender, startTrans])
 
-  // Restart with guard when lang/gender changes mid-session
+  // Restart with guard when lang/gender changes mid-session.
+  // 600 ms debounce: prevents rapid language-switch from hammering Azure STT
+  // with back-to-back WebSocket opens that trigger rate-limit quota errors.
   useEffect(() => {
     if (!isTranslating) return
     const seq = ++restartSeq.current
-    void (async () => {
+    const t = setTimeout(async () => {
+      if (seq !== restartSeq.current) return
       const ve = await getVE()
       await ve.stopTranslation()
       if (seq !== restartSeq.current) return
@@ -369,7 +716,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         console.error("[Translation restart]", err)
         setIsTranslating(false)
       }
-    })()
+    }, 600)
+    return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceLang, targetLang, voiceGender])
 
@@ -387,25 +735,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   return (
     <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden">
-
-      {/* ── Global video CSS — injected once, never re-created on re-render ──
-           object-fit: contain  → full frame, no zoom, no crop
-           will-change/translateZ → GPU layer per video element
-           aspect-ratio         → tiles always 16:9 when alone
-         ──────────────────────────────────────────────────────────────────── */}
-      <style>{`
-        .video-tile video,
-        .video-tile-local video {
-          width: 100%; height: 100%;
-          object-fit: contain;
-          background: #111;
-          will-change: transform;
-          transform: translateZ(0);
-        }
-        .video-tile-local video {
-          transform: scaleX(-1) translateZ(0);
-        }
-      `}</style>
 
       {/* Network banner */}
       {netStatus !== "ok" && (
@@ -427,12 +756,21 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           {/* Local tile */}
           <div className="video-tile-local relative bg-[#111] rounded-2xl overflow-hidden border border-white/8 min-h-0">
             <div id="local-video-renderer" className="absolute inset-0" />
-            {!isCamOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 z-10">
-                <span className="text-6xl opacity-40">👤</span>
+            {isScreenSharing && (
+              <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/60 z-10 pointer-events-none">
+                <span className="text-xs text-white/50 bg-black/60 px-3 py-1.5 rounded-full">Partage d&apos;ecran actif</span>
               </div>
             )}
-            <span className="absolute bottom-2 left-3 text-xs text-white/35 z-10 select-none">Vous</span>
+            {!isCamOn && !isScreenSharing && (
+              <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 z-10">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-2xl font-black shadow-lg">V</div>
+              </div>
+            )}
+            {/* Name tag */}
+            <div className="absolute bottom-0 left-0 right-0 z-10 px-3 py-2" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)" }}>
+              <span className="text-xs font-bold text-white/90">Vous</span>
+              {isANS && <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 border border-green-500/30 px-1.5 py-0.5 rounded-full font-semibold">Filtre actif</span>}
+            </div>
           </div>
 
           {/* Remote tiles */}
@@ -442,88 +780,255 @@ export default function RoomClient({ roomId }: { roomId: string }) {
               className="video-tile relative bg-[#111] rounded-2xl overflow-hidden border border-white/8 min-h-0"
             >
               <div id={`rv-${user.uid}`} className="absolute inset-0" />
-              <span className="absolute bottom-2 left-3 text-xs text-white/35 z-10 select-none">
-                #{String(user.uid).slice(-4)}
-              </span>
+              {/* Name tag */}
+              <div className="absolute bottom-0 left-0 right-0 z-10 px-3 py-2" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)" }}>
+                <span className="text-xs font-bold text-white/90">Participant</span>
+                <span className="ml-2 text-[10px] text-white/40">#{String(user.uid).slice(-4)}</span>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Subtitles */}
-        {subtitle && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[75%] text-center pointer-events-none z-20">
-            <div className={`inline-block px-5 py-2.5 rounded-2xl font-medium
-              backdrop-blur-md shadow-xl transition-all duration-100 ${
-              subtitle.final
-                ? "bg-black/80 text-white text-base"
-                : "bg-black/50 text-white/65 italic text-sm"
-            }`}>
-              {subtitle.text}
-            </div>
-          </div>
+        {/* Subtitles — isolated component; updates don't re-render the video grid */}
+        <SubtitleOverlay ref={subtitleRef} />
+
+        {/* AI Companion panel */}
+        {showAICompanion && (
+          <AICompanion
+            transcript={transcript}
+            defaultLang={targetLang}
+            onClose={() => setShowAICompanion(false)}
+          />
+        )}
+
+        {/* Whiteboard overlay */}
+        {showWhiteboard && (
+          <Whiteboard roomId={roomId} onClose={() => setShowWhiteboard(false)} />
         )}
       </main>
 
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      <footer className="shrink-0 bg-[#0d0d0d] border-t border-white/5">
-        <div className="text-center pt-2 pb-0.5 text-[9px] uppercase tracking-widest text-white/15 select-none">
+      {/* ── Control Bar ────────────────────────────────────────────────────── */}
+      <footer className="shrink-0" style={{ background: "rgba(6,6,10,0.98)", borderTop: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+
+        {/* Room ID micro-label */}
+        <div className="text-center pt-1.5" style={{ fontSize: "9px", letterSpacing: "0.18em", opacity: 0.18, fontWeight: 600, textTransform: "uppercase", userSelect: "none" }}>
           {roomId}
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-2 px-4 py-2.5">
 
-          {/* Mic */}
-          <button
-            title={isMicOn ? "Couper le micro" : "Activer le micro"}
-            onClick={async () => {
-              if (!tracksRef.current) return
-              const next = !isMicOn
-              await tracksRef.current.audio.setEnabled(next)
-              setIsMicOn(next)
-            }}
-            className={`w-11 h-11 flex items-center justify-center rounded-xl text-lg transition-colors ${
-              isMicOn ? "bg-zinc-800 hover:bg-zinc-700" : "bg-red-600 hover:bg-red-500 ring-2 ring-red-400/40"
-            }`}
-          >{isMicOn ? "🎙️" : "🔇"}</button>
+        {/* Three-column toolbar */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "8px 20px 12px", gap: "12px" }}>
 
-          {/* Camera */}
-          <button
-            title={isCamOn ? "Couper la caméra" : "Activer la caméra"}
-            onClick={async () => {
-              if (!tracksRef.current) return
-              const next = !isCamOn
-              await tracksRef.current.video.setEnabled(next)
-              setIsCamOn(next)
-            }}
-            className={`w-11 h-11 flex items-center justify-center rounded-xl text-lg transition-colors ${
-              isCamOn ? "bg-zinc-800 hover:bg-zinc-700" : "bg-red-600 hover:bg-red-500 ring-2 ring-red-400/40"
-            }`}
-          >{isCamOn ? "📹" : "📷"}</button>
+          {/* LEFT — Media controls */}
+          <div style={{ display: "flex", gap: "6px", justifyContent: "flex-start" }}>
+            <CtrlBtn
+              label={isMicOn ? "Micro" : "Micro off"}
+              active={!isMicOn}
+              activeColor="#dc2626"
+              onClick={async () => {
+                if (!tracksRef.current) return
+                const next = !isMicOn
+                await tracksRef.current.audio.setEnabled(next)
+                setIsMicOn(next)
+              }}
+              icon={
+                isMicOn
+                  ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
+                  : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>
+              }
+            />
+            <CtrlBtn
+              label={isCamOn ? "Camera" : "Camera off"}
+              active={!isCamOn}
+              activeColor="#dc2626"
+              onClick={async () => {
+                if (!tracksRef.current) return
+                const next = !isCamOn
+                await tracksRef.current.video.setEnabled(next)
+                setIsCamOn(next)
+              }}
+              icon={
+                isCamOn
+                  ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M3.5 7A1.5 1.5 0 002 8.5v5A1.5 1.5 0 003.5 15h8A1.5 1.5 0 0013 13.5v-1.3l2.15 1.43A.75.75 0 0016.5 13V9a.75.75 0 00-1.35-.45L13 9.9V8.5A1.5 1.5 0 0011.5 7h-8z"/></svg>
+                  : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path fillRule="evenodd" d="M4.28 3.22a.75.75 0 00-1.06 1.06l.19.19C3.15 4.7 3 5.09 3 5.5v7A2.5 2.5 0 005.5 15h7c.41 0 .8-.15 1.09-.41l1.12 1.12a.75.75 0 101.06-1.06L4.28 3.22zm3.53 8.66l5.79 5.79A2.5 2.5 0 0015 14.5v-7c0-.5-.19-.97-.5-1.32l-6.69 6.7z" clipRule="evenodd"/></svg>
+              }
+            />
+            <CtrlBtn
+              label={isScreenSharing ? "Partage actif" : "Ecran"}
+              active={isScreenSharing}
+              activeColor="#0891b2"
+              onClick={() => void toggleScreenShare()}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
+                  <path fillRule="evenodd" d="M2 4.25A2.25 2.25 0 014.25 2h11.5A2.25 2.25 0 0118 4.25v8.5A2.25 2.25 0 0115.75 15h-3.105a3.501 3.501 0 001.1 1.677A.75.75 0 0113.26 18H6.74a.75.75 0 01-.484-1.323A3.501 3.501 0 007.355 15H4.25A2.25 2.25 0 012 12.75v-8.5zm1.5 0v7.5c0 .414.336.75.75.75h11.5a.75.75 0 00.75-.75v-7.5a.75.75 0 00-.75-.75H4.25a.75.75 0 00-.75.75z" clipRule="evenodd" />
+                </svg>
+              }
+            />
+            <CtrlBtn
+              label={isANS ? "Filtre ON" : "Filtre bruit"}
+              active={isANS}
+              activeColor="#15803d"
+              onClick={() => void toggleANS()}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
+                  <path d="M10.5 3.75a.75.75 0 00-1.5 0v1.5a.75.75 0 001.5 0v-1.5zM14.78 5.72a.75.75 0 00-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zm1.47 3.53a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm-3.78 5.06a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 00-1.06 1.06l1.06 1.06zm-6.5-1.06a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06l-1.06-1.06zM4.75 10a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm1.47-5.28a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06L6.22 4.72zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" />
+                </svg>
+              }
+            />
+          </div>
 
-          <div className="w-px h-7 bg-white/10 mx-1 hidden sm:block" />
+          {/* CENTER — Translation controls */}
+          <div style={{ display: "flex", gap: "7px", alignItems: "center", padding: "6px 14px", borderRadius: "18px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <LanguageSelector title="Je parle"   value={sourceLang}  onChange={setSourceLang} />
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 14, height: 14, opacity: 0.3, flexShrink: 0 }}><path strokeLinecap="round" d="M2 8h12M10 4l4 4-4 4"/></svg>
+            <LanguageSelector title="Traduit en" value={targetLang}  onChange={setTargetLang} />
+            <VoiceSelector value={voiceGender} onChange={setVoiceGender} />
+            <button
+              onClick={toggleTranslation}
+              style={{
+                height: 34, padding: "0 14px", borderRadius: "10px", border: 0,
+                background: isTranslating
+                  ? "linear-gradient(135deg, #2563eb, #1d4ed8)"
+                  : "linear-gradient(135deg, #6366f1, #7c3aed)",
+                color: "white", fontWeight: 700, fontSize: "12.5px",
+                cursor: "pointer", whiteSpace: "nowrap",
+                boxShadow: isTranslating ? "0 4px 14px rgba(37,99,235,0.45)" : "0 4px 14px rgba(99,102,241,0.45)",
+                transition: "all 0.2s",
+              }}
+            >
+              {isTranslating ? "Arreter" : "Traduire"}
+            </button>
+          </div>
 
-          <LanguageSelector title="Je parle"   value={sourceLang}  onChange={setSourceLang} />
-          <LanguageSelector title="Traduit en" value={targetLang}  onChange={setTargetLang} />
-          <VoiceSelector    value={voiceGender} onChange={setVoiceGender} />
+          {/* RIGHT — Tools + Leave */}
+          <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", alignItems: "center" }}>
+            {/* Voice quality toggle */}
+            <CtrlBtn
+              label={ttsProvider === "elevenlabs" ? "Voix HD" : "Voix Standard"}
+              active={ttsProvider === "elevenlabs"}
+              activeColor="#ec4899"
+              onClick={() => void toggleTTSProvider()}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
+                  <path d="M9.653 16.915l-.005-.003-.019-.01a20.759 20.759 0 01-1.162-.682 22.045 22.045 0 01-2.582-2.09c-1.29-1.329-2.258-2.956-2.258-4.88C3.627 6.68 5.348 5 7.5 5c1.139 0 2.16.543 2.836 1.388 1.155-.953 2.7-1.492 4.086-.777.93.483 1.578 1.373 1.578 2.389 0 2.3-2.67 4.26-4.346 5.915z"/>
+                </svg>
+              }
+            />
+            <CtrlBtn
+              label="Board"
+              active={showWhiteboard}
+              activeColor="#7c3aed"
+              onClick={() => setShowWhiteboard(!showWhiteboard)}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
+                  <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2H4zm0 2h12v8H4V7z" clipRule="evenodd" />
+                  <path d="M7 9.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5z" />
+                </svg>
+              }
+            />
+            <CtrlBtn
+              label="IA"
+              active={showAICompanion}
+              activeColor="#4f46e5"
+              onClick={() => setShowAICompanion(!showAICompanion)}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
+                  <path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z" />
+                </svg>
+              }
+            />
 
-          <div className="w-px h-7 bg-white/10 mx-1 hidden sm:block" />
+            {/* Divider */}
+            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.09)", margin: "0 4px" }} />
 
-          <button
-            onClick={toggleTranslation}
-            className={`h-11 px-5 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${
-              isTranslating
-                ? "bg-blue-600 hover:bg-blue-500 text-white ring-2 ring-blue-400/30"
-                : "bg-zinc-800 hover:bg-zinc-700 text-white/75"
-            }`}
-          >{isTranslating ? "⏹ Arrêter" : "🌐 Traduire"}</button>
-
-          <button
-            onClick={() => { void cleanup(); window.location.href = "/" }}
-            className="h-11 px-5 rounded-xl text-sm font-semibold bg-red-700 hover:bg-red-600 transition-colors whitespace-nowrap"
-          >Quitter</button>
-
+            {/* Leave */}
+            <button
+              onClick={() => { void cleanup(); window.location.href = "/" }}
+              style={{ height: 38, padding: "0 16px", borderRadius: "11px", border: "1px solid rgba(220,38,38,0.25)", background: "rgba(220,38,38,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: "13px", cursor: "pointer", transition: "background 0.15s", whiteSpace: "nowrap" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.3)" }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.15)" }}
+            >
+              Quitter
+            </button>
+          </div>
         </div>
       </footer>
 
     </div>
+  )
+}
+
+// ─── Subtitle overlay — isolated component so subtitle state changes never ────
+// re-render the parent RoomClient (and thus never stall the video grid).
+type SubtitleOverlayHandle = {
+  show: (lang: string, text: string, final: boolean) => void
+  reset: () => void
+}
+
+const SubtitleOverlay = forwardRef<SubtitleOverlayHandle, object>(
+  function SubtitleOverlay(_, ref) {
+    const [subtitle, setSub] = useState<Subtitle | null>(null)
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    useImperativeHandle(ref, () => ({
+      show(lang, text, final) {
+        setSub({ lang, text, final })
+        if (timer.current) clearTimeout(timer.current)
+        if (final) timer.current = setTimeout(() => setSub(null), 5000)
+      },
+      reset() {
+        if (timer.current) clearTimeout(timer.current)
+        setSub(null)
+      },
+    }), [])
+
+    if (!subtitle) return null
+    return (
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[75%] text-center pointer-events-none z-20">
+        <div className={`inline-block px-5 py-2.5 rounded-2xl font-medium backdrop-blur-md shadow-xl transition-all duration-100 ${
+          subtitle.final
+            ? "bg-black/80 text-white text-base"
+            : "bg-black/50 text-white/65 italic text-sm"
+        }`}>
+          {subtitle.text}
+        </div>
+      </div>
+    )
+  }
+)
+
+// ─── Shared control button ────────────────────────────────────────────────────
+function CtrlBtn({
+  label, icon, active, activeColor, onClick,
+}: {
+  label: string
+  icon: React.ReactNode
+  active?: boolean
+  activeColor?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: "4px", padding: "6px 10px", borderRadius: "12px", border: "1px solid",
+        borderColor: active ? (activeColor ?? "#6366f1") + "55" : "rgba(255,255,255,0.07)",
+        background: active ? (activeColor ?? "#6366f1") + "22" : "rgba(255,255,255,0.04)",
+        color: active ? "white" : "rgba(255,255,255,0.65)",
+        cursor: "pointer", transition: "all 0.15s", minWidth: "52px",
+      }}
+      onMouseEnter={e => {
+        if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)"
+      }}
+      onMouseLeave={e => {
+        if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)"
+      }}
+    >
+      {icon}
+      <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.02em", textTransform: "none", whiteSpace: "nowrap", opacity: active ? 1 : 0.6 }}>
+        {label}
+      </span>
+    </button>
   )
 }

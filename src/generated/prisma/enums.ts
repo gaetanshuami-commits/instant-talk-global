@@ -9,7 +9,38 @@
 * 🟢 You can import this file directly.
 */
 
+export const MeetingStatus = {
+  SCHEDULED: 'SCHEDULED',
+  LIVE: 'LIVE',
+  ENDED: 'ENDED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type MeetingStatus = (typeof MeetingStatus)[keyof typeof MeetingStatus]
 
 
-// This file is empty because there are no enums in the schema.
-export {}
+export const InviteStatus = {
+  PENDING: 'PENDING',
+  SENT: 'SENT',
+  ACCEPTED: 'ACCEPTED',
+  DECLINED: 'DECLINED'
+} as const
+
+export type InviteStatus = (typeof InviteStatus)[keyof typeof InviteStatus]
+
+
+export const ReminderChannel = {
+  EMAIL: 'EMAIL'
+} as const
+
+export type ReminderChannel = (typeof ReminderChannel)[keyof typeof ReminderChannel]
+
+
+export const WebinarStatus = {
+  UPCOMING: 'UPCOMING',
+  LIVE: 'LIVE',
+  ENDED: 'ENDED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type WebinarStatus = (typeof WebinarStatus)[keyof typeof WebinarStatus]

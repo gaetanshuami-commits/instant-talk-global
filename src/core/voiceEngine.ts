@@ -1,19 +1,21 @@
 // voiceEngine.ts
-// Full coverage: 26 languages. SDK cached. TTS: remote-only, cancel-on-interrupt.
+// Full coverage: 23+ languages. Azure STT primary, Web Speech API fallback.
+// TTS: remote-only (never local speakers), cancel-on-interrupt.
 
-// ─── Recognition locales (all 26 LanguageSelector languages) ─────────────────
+// ─── Recognition locales — keyed by UI language code ─────────────────────────
 
 export const SOURCE_LOCALE: Record<string, string> = {
   fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT",
   ru: "ru-RU", pl: "pl-PL", nl: "nl-NL", pt: "pt-BR", ar: "ar-SA",
-  ja: "ja-JP", ko: "ko-KR", hi: "hi-IN", tr: "tr-TR", "zh-Hans": "zh-CN",
+  ja: "ja-JP", ko: "ko-KR", hi: "hi-IN", tr: "tr-TR", zh: "zh-CN",
   sw: "sw-KE", ro: "ro-RO", el: "el-GR", sv: "sv-SE", hu: "hu-HU",
-  cs: "cs-CZ", bg: "bg-BG", da: "da-DK", fi: "fi-FI", sk: "sk-SK",
-  no: "nb-NO",
+  cs: "cs-CZ", th: "th-TH", vi: "vi-VN",
+  bg: "bg-BG", da: "da-DK", fi: "fi-FI", sk: "sk-SK", no: "nb-NO",
 }
 
-// UI code → Azure Translation API code (where they differ)
+// UI code → Azure Translation API target code
 const AZURE_TARGET: Record<string, string> = {
+  zh: "zh-Hans",
   no: "nb",
 }
 function toAzureTarget(lang: string): string {
@@ -23,29 +25,31 @@ function toAzureTarget(lang: string): string {
 // ─── TTS voices — female ──────────────────────────────────────────────────────
 
 export const TTS_VOICE_FEMALE: Record<string, string> = {
-  fr: "fr-FR-DeniseNeural",   en: "en-US-AriaNeural",      es: "es-ES-ElviraNeural",
-  de: "de-DE-KatjaNeural",    it: "it-IT-ElsaNeural",       ru: "ru-RU-SvetlanaNeural",
-  pl: "pl-PL-ZofiaNeural",    nl: "nl-NL-ColetteNeural",    pt: "pt-BR-FranciscaNeural",
-  ar: "ar-SA-ZariyahNeural",  ja: "ja-JP-NanamiNeural",     ko: "ko-KR-SunHiNeural",
-  hi: "hi-IN-SwaraNeural",    tr: "tr-TR-EmelNeural",       "zh-Hans": "zh-CN-XiaoxiaoNeural",
-  sw: "sw-KE-ZuriNeural",     ro: "ro-RO-AlinaNeural",      el: "el-GR-AthinaNeural",
-  sv: "sv-SE-SofieNeural",    hu: "hu-HU-NoemiNeural",      cs: "cs-CZ-VlastaNeural",
-  bg: "bg-BG-KalinaNeural",   da: "da-DK-ChristelNeural",   fi: "fi-FI-SelmaNeural",
-  sk: "sk-SK-ViktoriaNeural", no: "nb-NO-PernilleNeural",   ln: "fr-FR-DeniseNeural",
+  fr: "fr-FR-DeniseNeural",    en: "en-US-AriaNeural",       es: "es-ES-ElviraNeural",
+  de: "de-DE-KatjaNeural",     it: "it-IT-ElsaNeural",        ru: "ru-RU-SvetlanaNeural",
+  pl: "pl-PL-ZofiaNeural",     nl: "nl-NL-ColetteNeural",     pt: "pt-BR-FranciscaNeural",
+  ar: "ar-SA-ZariyahNeural",   ja: "ja-JP-NanamiNeural",      ko: "ko-KR-SunHiNeural",
+  hi: "hi-IN-SwaraNeural",     tr: "tr-TR-EmelNeural",        zh: "zh-CN-XiaoxiaoNeural",
+  sw: "sw-KE-ZuriNeural",      ro: "ro-RO-AlinaNeural",       el: "el-GR-AthinaNeural",
+  sv: "sv-SE-SofieNeural",     hu: "hu-HU-NoemiNeural",       cs: "cs-CZ-VlastaNeural",
+  th: "th-TH-PremwadeeNeural", vi: "vi-VN-HoaiMyNeural",
+  bg: "bg-BG-KalinaNeural",    da: "da-DK-ChristelNeural",    fi: "fi-FI-SelmaNeural",
+  sk: "sk-SK-ViktoriaNeural",  no: "nb-NO-PernilleNeural",    ln: "fr-FR-DeniseNeural",
 }
 
 // ─── TTS voices — male ────────────────────────────────────────────────────────
 
 export const TTS_VOICE_MALE: Record<string, string> = {
-  fr: "fr-FR-HenriNeural",    en: "en-US-GuyNeural",        es: "es-ES-AlvaroNeural",
-  de: "de-DE-ConradNeural",   it: "it-IT-DiegoNeural",      ru: "ru-RU-DmitryNeural",
-  pl: "pl-PL-MarekNeural",    nl: "nl-NL-MaartenNeural",    pt: "pt-BR-AntonioNeural",
-  ar: "ar-SA-HamedNeural",    ja: "ja-JP-KeitaNeural",      ko: "ko-KR-InJoonNeural",
-  hi: "hi-IN-MadhurNeural",   tr: "tr-TR-AhmetNeural",      "zh-Hans": "zh-CN-YunxiNeural",
-  sw: "sw-KE-RafikiNeural",   ro: "ro-RO-EmilNeural",       el: "el-GR-NestorasNeural",
-  sv: "sv-SE-MattiasNeural",  hu: "hu-HU-TamasNeural",      cs: "cs-CZ-AntoninNeural",
-  bg: "bg-BG-BorislavNeural", da: "da-DK-JeppeNeural",      fi: "fi-FI-HarriNeural",
-  sk: "sk-SK-LukasNeural",    no: "nb-NO-FinnNeural",       ln: "fr-FR-HenriNeural",
+  fr: "fr-FR-HenriNeural",     en: "en-US-GuyNeural",         es: "es-ES-AlvaroNeural",
+  de: "de-DE-ConradNeural",    it: "it-IT-DiegoNeural",       ru: "ru-RU-DmitryNeural",
+  pl: "pl-PL-MarekNeural",     nl: "nl-NL-MaartenNeural",     pt: "pt-BR-AntonioNeural",
+  ar: "ar-SA-HamedNeural",     ja: "ja-JP-KeitaNeural",       ko: "ko-KR-InJoonNeural",
+  hi: "hi-IN-MadhurNeural",    tr: "tr-TR-AhmetNeural",       zh: "zh-CN-YunxiNeural",
+  sw: "sw-KE-RafikiNeural",    ro: "ro-RO-EmilNeural",        el: "el-GR-NestorasNeural",
+  sv: "sv-SE-MattiasNeural",   hu: "hu-HU-TamasNeural",       cs: "cs-CZ-AntoninNeural",
+  th: "th-TH-NiwatNeural",     vi: "vi-VN-NamMinhNeural",
+  bg: "bg-BG-BorislavNeural",  da: "da-DK-JeppeNeural",       fi: "fi-FI-HarriNeural",
+  sk: "sk-SK-LukasNeural",     no: "nb-NO-FinnNeural",        ln: "fr-FR-HenriNeural",
 }
 
 export const TTS_VOICE = TTS_VOICE_FEMALE
@@ -60,10 +64,8 @@ export type SubtitleCallbacks = {
 
 export type VoiceGender = "female" | "male"
 
-// ─── Web Audio — Agora interpreter track (remote participants only) ────────────
-// TTS audio is NEVER connected to ctx.destination (local speakers).
-// It only goes to ttsDestNode → Agora interpreter track → remote peers.
-// The local speaker therefore never hears their own translation.
+// ─── Web Audio — TTS output (Agora interpreter track only) ───────────────────
+// Never connected to ctx.destination — local speakers never hear own translation.
 
 let ttsCtx: AudioContext | null = null
 let ttsDestNode: MediaStreamAudioDestinationNode | null = null
@@ -83,37 +85,221 @@ type SDK = typeof import("microsoft-cognitiveservices-speech-sdk")
 let _sdk: SDK | null = null
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let recognizer: any       = null
+let recognizer: any       = null   // Azure TranslationRecognizer
 let azureToken            = ""
 let azureRegion           = ""
+let azureTokenExpiry      = 0      // epoch ms; refresh at 9 min (expiry = 10 min)
+let _restartTimer: ReturnType<typeof setTimeout> | null = null  // auto-restart on transient error
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeSynth: any      = null
 let activeSynthDone: (() => void) | null = null
 
-// ─── Warmup — call at room join, before user clicks "Translate" ───────────────
-// Pre-loads the Azure Speech SDK (~8 MB) and fetches the auth token so that
-// when the user starts speaking the recognizer starts in < 100 ms.
+// ─── Web Speech API fallback state ───────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _wsr: any = null               // SpeechRecognition instance (browser fallback)
+let _wsrActive = false             // true while fallback is supposed to be running
+
+// ─── TTS provider ─────────────────────────────────────────────────────────────
+
+let _ttsProvider: "azure" | "elevenlabs" = "elevenlabs"
+let _ttsGenderGlobal: VoiceGender = "female"
+
+export function setTTSProvider(provider: "azure" | "elevenlabs"): void {
+  _ttsProvider = provider
+}
+export function getTTSProvider(): "azure" | "elevenlabs" {
+  return _ttsProvider
+}
+
+// ─── Cloned voice — set once after ElevenLabs instant cloning ────────────────
+let _clonedVoiceId: string | null = null
+
+export function setClonedVoiceId(id: string | null): void {
+  _clonedVoiceId = id
+}
+export function getClonedVoiceId(): string | null {
+  return _clonedVoiceId
+}
+
+// Languages NOT supported by eleven_flash_v2_5 → Azure TTS fallback
+const ELEVENLABS_UNSUPPORTED = new Set(["sw", "ln", "th"])
+
+// ─── ElevenLabs TTS ───────────────────────────────────────────────────────────
+
+async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
+  try {
+    const res = await fetch("/api/elevenlabs-tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Use cloned voice when available — falls back to gender default in the route
+      body: JSON.stringify({ text, gender: _ttsGenderGlobal, voiceId: _clonedVoiceId ?? undefined }),
+    })
+    if (!res.ok) throw new Error(`ElevenLabs ${res.status}`)
+    const arrayBuffer = await res.arrayBuffer()
+    if (arrayBuffer.byteLength > 0) void scheduleAudio(arrayBuffer)
+  } catch {
+    const voiceMap = _ttsGenderGlobal === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+    await speakWithAzure(text, lang, voiceMap)
+  }
+}
+
+// ─── Azure TTS ────────────────────────────────────────────────────────────────
+
+async function speakWithAzure(
+  text: string,
+  lang: string,
+  voiceMap: Record<string, string>
+): Promise<void> {
+  cancelActiveSynth()
+  const sdk   = _sdk!
+  const voice = voiceMap[lang] ?? "en-US-AriaNeural"
+  const cfg   = sdk.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion)
+  cfg.speechSynthesisVoiceName = voice
+  const synth = new sdk.SpeechSynthesizer(
+    cfg,
+    null as unknown as InstanceType<typeof sdk.AudioConfig>
+  )
+  activeSynth = synth
+  await new Promise<void>((resolve) => {
+    activeSynthDone = resolve
+    synth.speakTextAsync(
+      text,
+      async (result: { audioData?: ArrayBuffer }) => {
+        if (activeSynth !== synth) { resolve(); return }
+        activeSynth = null; activeSynthDone = null; synth.close()
+        if (result.audioData && result.audioData.byteLength > 0) void scheduleAudio(result.audioData)
+        resolve()
+      },
+      (_err: unknown) => {
+        if (activeSynth === synth) { activeSynth = null; activeSynthDone = null }
+        synth.close(); resolve()
+      }
+    )
+  })
+}
+
+// ─── Token — auto-refresh before 10-min expiry ────────────────────────────────
+
+async function ensureToken(): Promise<void> {
+  if (azureToken && Date.now() < azureTokenExpiry) return
+  const res  = await fetch("/api/azure-speech-token")
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  azureToken       = data.token
+  azureRegion      = data.region
+  azureTokenExpiry = Date.now() + 9 * 60 * 1000
+}
+
+// ─── Warmup ───────────────────────────────────────────────────────────────────
 
 export async function warmupSDK(): Promise<void> {
   try {
-    // Pre-create the AudioContext and MediaStreamDestination now, inside the
-    // user-gesture window (room join click). Avoids the suspended-state delay
-    // on the very first TTS call which otherwise costs ~50 ms.
     getTTSMediaStream()
-
     if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
+    await ensureToken()
+  } catch {
+    // Non-fatal — retried in startTranslation if needed
+  }
+}
 
-    // Fetch auth token once; reused on every startTranslation until expiry.
-    if (!azureToken) {
-      const res  = await fetch("/api/azure-speech-token")
-      const data = await res.json()
-      if (!data.error) {
-        azureToken  = data.token
-        azureRegion = data.region
+// ─── Web Speech API fallback ──────────────────────────────────────────────────
+// Activated automatically when Azure STT returns "Quota exceeded".
+// Uses the browser's native SpeechRecognition (Chrome/Edge only) for STT, then
+// calls /api/translate for text translation. Lower accuracy than Azure but free.
+//
+// Partials: shown in source language (translation is async, can't keep up).
+// Finals: translated via /api/translate → text subtitles + TTS voice.
+
+async function startWebSpeechFallback(
+  sourceLang: string,
+  targets: string[],
+  callbacks: SubtitleCallbacks,
+  ttsLang: string | undefined,
+  voiceGender: VoiceGender,
+  getRemoteCount: (() => number) | undefined
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (!SR) {
+    callbacks.onError?.("Azure STT quota exceeded. Browser STT (Chrome) not available either.")
+    return
+  }
+
+  console.info("[VoiceEngine] Azure quota exceeded — using browser STT fallback (Chrome)")
+
+  const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+  _wsrActive = true
+
+  function createWSR() {
+    const wsr = new SR()
+    wsr.lang       = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
+    wsr.continuous = true
+    wsr.interimResults = true
+    wsr.maxAlternatives = 1
+    _wsr = wsr
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    wsr.onresult = async (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result    = event.results[i]
+        const transcript: string = result[0].transcript.trim()
+        if (!transcript) continue
+
+        if (result.isFinal) {
+          // Translate each target language via REST (Azure Translator / DeepL)
+          for (const lang of targets) {
+            try {
+              const res  = await fetch("/api/translate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: transcript, targetLang: toAzureTarget(lang) }),
+              })
+              const data = await res.json()
+              const translated = (typeof data.translatedText === "string" ? data.translatedText : transcript)
+              callbacks.onFinal(lang, translated)
+              if (ttsLang && lang === ttsLang) {
+                const rc = getRemoteCount ? getRemoteCount() : 1
+                if (rc > 0) void speakTranslated(translated, lang, voiceMap)
+              }
+            } catch {
+              // Translation API failed — show original transcript at least
+              callbacks.onFinal(lang, transcript)
+            }
+          }
+        } else {
+          // Partial: show source transcript while translation is pending
+          for (const lang of targets) callbacks.onPartial(lang, transcript)
+        }
       }
     }
-  } catch {
-    // Non-fatal — will be retried at startTranslation if needed
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    wsr.onerror = (event: any) => {
+      if (event.error === "not-allowed") {
+        callbacks.onError?.("Microphone permission denied.")
+      }
+      // "no-speech" is non-fatal — recognition auto-restarts via onend
+    }
+
+    wsr.onend = () => {
+      // Auto-restart to keep recognition continuous (Web Speech API stops on silence)
+      if (_wsrActive && _wsr === wsr) {
+        try { wsr.start() } catch {}
+      }
+    }
+
+    wsr.start()
+  }
+
+  createWSR()
+}
+
+function stopWebSpeechFallback(): void {
+  _wsrActive = false
+  if (_wsr) {
+    const w = _wsr
+    _wsr = null
+    try { w.stop() } catch {}
   }
 }
 
@@ -126,76 +312,59 @@ export async function startTranslation(
   ttsLang?: string,
   voiceGender: VoiceGender = "female",
   getRemoteCount?: () => number,
-  /** Plan-enforced language whitelist. null = all languages allowed. */
   allowedLangs?: string[] | null
 ): Promise<void> {
   await stopTranslation()
 
-  // ── Language plan enforcement ────────────────────────────────────────────────
-  // allowedLangs is the server-returned whitelist for the caller's plan.
-  // null means no restriction (enterprise). If a requested language is outside
-  // the plan, it is silently dropped and the error callback fires.
+  // ── Plan language enforcement ──────────────────────────────────────────────
   const filteredTargets = allowedLangs
     ? targetLangs.filter((lang) => {
         if (allowedLangs.includes(lang)) return true
         callbacks.onError?.(
-          `Language "${lang}" is not included in your current plan. Upgrade to Business or Enterprise to unlock more languages.`
+          `Language "${lang}" is not included in your current plan.`
         )
         return false
       })
     : targetLangs
 
-  // Reassign so the rest of the function uses the filtered list
   // eslint-disable-next-line no-param-reassign
   targetLangs = filteredTargets
 
   if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
   const sdk = _sdk
 
-  // Use pre-warmed token if available, else fetch
-  if (!azureToken) {
-    const res  = await fetch("/api/azure-speech-token")
-    const data = await res.json()
-    if (data.error) throw new Error(data.error)
-    azureToken  = data.token
-    azureRegion = data.region
-  }
+  // Refresh token if expired (handles long sessions > 10 min)
+  await ensureToken()
 
   const speechConfig = sdk.SpeechTranslationConfig.fromAuthorizationToken(
     azureToken, azureRegion
   )
-
   speechConfig.speechRecognitionLanguage = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
 
-  // ── Latency settings ────────────────────────────────────────────────────
-  // 150 ms end-silence: recognizer fires as soon as the speaker pauses briefly.
-  // This is the single biggest lever for near-zero perceived latency.
+  // ── Latency ────────────────────────────────────────────────────────────────
   speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "250"
+    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "200"
   )
-  // Allow up to 10 s before first word — don't time out a slow start
   speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "10000"
+    sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "30000"
   )
-  // TrueText: better punctuation + casing without extra round-trip
-  speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceResponse_PostProcessingOption, "TrueText"
-  )
+  // TrueText removed: adds 300ms+ latency on finals, no benefit for live translation
 
   const targets = targetLangs
     .filter((t) => t !== sourceLang)
-    .filter((t) => t !== "ln")   // Lingala: no Azure Translation support yet
+    .filter((t) => t !== "ln")
   if (targets.length === 0) targets.push(sourceLang === "en" ? "fr" : "en")
   for (const lang of targets) speechConfig.addTargetLanguage(toAzureTarget(lang))
 
   const audioConfig = sdk.AudioConfig.fromDefaultMicrophoneInput()
   recognizer = new sdk.TranslationRecognizer(speechConfig, audioConfig)
+  const r = recognizer
 
+  _ttsGenderGlobal = voiceGender
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
 
-  // ── recognizing: immediate partial subtitle ──────────────────────────────
-  // Fires continuously while the user speaks — shows live text with no wait.
-  recognizer.recognizing = (
+  // ── recognizing: immediate partial subtitle ─────────────────────────────────
+  r.recognizing = (
     _s: unknown,
     e: { result: { translations: { get: (l: string) => string } } }
   ) => {
@@ -206,9 +375,8 @@ export async function startTranslation(
     }
   }
 
-  // ── recognized: final subtitle + TTS ────────────────────────────────────
-  // Fires when the 150 ms end-silence elapses — triggers TTS immediately.
-  recognizer.recognized = (
+  // ── recognized: final subtitle + TTS ───────────────────────────────────────
+  r.recognized = (
     _s: unknown,
     e: { result: { reason: number; translations: { get: (l: string) => string } } }
   ) => {
@@ -218,28 +386,68 @@ export async function startTranslation(
       const text = e.result.translations.get(toAzureTarget(lang))
       if (!text) continue
       callbacks.onFinal(lang, text)
-      // TTS fires only when at least one remote peer is present.
-      // getRemoteCount() === 0 means the speaker is alone → no playback.
-      // TTS audio goes to the Agora channel only (not local speakers),
-      // so the speaker never hears their own translation regardless.
       if (ttsLang && lang === ttsLang) {
-        const remoteCount = getRemoteCount ? getRemoteCount() : 1
-        if (remoteCount > 0) void speakTranslated(text, lang, voiceMap)
+        const rc = getRemoteCount ? getRemoteCount() : 1
+        if (rc > 0) void speakTranslated(text, lang, voiceMap)
       }
     }
   }
 
-  recognizer.canceled = (
+  // ── canceled: handle fatal errors + automatic fallback ────────────────────
+  r.canceled = (
     _s: unknown,
     e: { reason: number; errorDetails: string }
   ) => {
-    if (e.reason === sdk.CancellationReason.Error) {
-      callbacks.onError?.(`Azure STT: ${e.errorDetails}`)
+    if (e.reason !== sdk.CancellationReason.Error) return
+    const detail = e.errorDetails ?? ""
+
+    // Azure actual error messages use "quota exceeded", "429", "Too Many Requests"
+    const isQuota = /quota exceeded|too many requests|429/i.test(detail)
+    // Azure auth errors: "Authentication error", "401", "403", "Unauthorized"
+    const isAuth  = /authentication error|authentication failed|401|403|unauthorized/i.test(detail)
+
+    if (isQuota) {
+      // Azure quota exhausted → transparent fallback to browser Web Speech API.
+      if (recognizer === r) recognizer = null
+      try { r.close() } catch {}
+
+      startWebSpeechFallback(
+        sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount
+      ).catch(() => {
+        callbacks.onError?.(`Azure STT: quota exceeded. Vérifiez votre abonnement Azure.`)
+      })
+
+    } else if (isAuth) {
+      // Bad token / wrong region — fatal, must refresh credentials
+      callbacks.onError?.(`Azure STT auth: ${detail}`)
+      if (recognizer === r) recognizer = null
+      try { r.close() } catch {}
+
+    } else {
+      // Transient error (network glitch, WebSocket drop, server overload).
+      // The Azure SDK does NOT auto-reconnect after canceled — we do it manually.
+      callbacks.onError?.(`Azure STT (transient): ${detail}`)
+      if (recognizer === r) recognizer = null
+      try { r.close() } catch {}
+
+      // Auto-restart after 1 second — transparent to the user
+      if (_restartTimer) clearTimeout(_restartTimer)
+      _restartTimer = setTimeout(() => {
+        _restartTimer = null
+        // Only restart if we're still "supposed to be translating" (no explicit stop)
+        if (recognizer !== null) return  // a new recognizer already started
+        startTranslation(
+          sourceLang, targetLangs, callbacks, ttsLang, voiceGender, getRemoteCount, allowedLangs
+        ).catch(() => {
+          // If restart also fails, surface the original error
+          callbacks.onError?.(`Azure STT: ${detail}`)
+        })
+      }, 1000)
     }
   }
 
   await new Promise<void>((resolve, reject) => {
-    recognizer.startContinuousRecognitionAsync(resolve, reject)
+    r.startContinuousRecognitionAsync(resolve, reject)
   })
 }
 
@@ -247,6 +455,14 @@ export async function startTranslation(
 
 export async function stopTranslation(): Promise<void> {
   cancelActiveSynth()
+
+  // Cancel any pending auto-restart
+  if (_restartTimer) { clearTimeout(_restartTimer); _restartTimer = null }
+
+  // Stop Web Speech API fallback if active
+  stopWebSpeechFallback()
+
+  // Stop Azure recognizer if active
   if (!recognizer) return
   const r = recognizer
   recognizer = null
@@ -254,54 +470,21 @@ export async function stopTranslation(): Promise<void> {
     r.stopContinuousRecognitionAsync(resolve, () => resolve())
   })
   try { r.close() } catch {}
-  // Token NOT reset: Azure tokens last ~10 minutes.
-  // Reusing the cached token removes a network round-trip on every language
-  // change (stopTranslation + startTranslation), saving ~200 ms of latency.
 }
 
-// ─── TTS: Agora channel only, never local speakers ───────────────────────────
+// ─── TTS dispatch ─────────────────────────────────────────────────────────────
 
 async function speakTranslated(
   text: string,
   lang: string,
   voiceMap: Record<string, string>
 ): Promise<void> {
-  cancelActiveSynth()   // interrupt previous if still running
-
-  const sdk   = _sdk!
-  const voice = voiceMap[lang] ?? "en-US-AriaNeural"
-
-  const cfg = sdk.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion)
-  cfg.speechSynthesisVoiceName = voice
-
-  const synth = new sdk.SpeechSynthesizer(
-    cfg,
-    null as unknown as InstanceType<typeof sdk.AudioConfig>
-  )
-  activeSynth = synth
-
-  await new Promise<void>((resolve) => {
-    activeSynthDone = resolve
-
-    synth.speakTextAsync(
-      text,
-      async (result: { audioData?: ArrayBuffer }) => {
-        if (activeSynth !== synth) { resolve(); return }
-        activeSynth     = null
-        activeSynthDone = null
-        synth.close()
-        if (result.audioData && result.audioData.byteLength > 0) {
-          void scheduleAudio(result.audioData)
-        }
-        resolve()
-      },
-      (_err: unknown) => {
-        if (activeSynth === synth) { activeSynth = null; activeSynthDone = null }
-        synth.close()
-        resolve()
-      }
-    )
-  })
+  cancelActiveSynth()  // interrupt previous utterance if still running
+  if (_ttsProvider === "elevenlabs" && !ELEVENLABS_UNSUPPORTED.has(lang)) {
+    await speakWithElevenLabs(text, lang)
+  } else {
+    await speakWithAzure(text, lang, voiceMap)
+  }
 }
 
 function cancelActiveSynth(): void {
@@ -313,7 +496,7 @@ function cancelActiveSynth(): void {
   done?.()
 }
 
-// ─── Web Audio: sequential playback into Agora track ─────────────────────────
+// ─── Web Audio: sequential TTS playback into Agora interpreter track ──────────
 
 async function scheduleAudio(audioData: ArrayBuffer): Promise<void> {
   if (!ttsCtx) getTTSMediaStream()
@@ -326,10 +509,10 @@ async function scheduleAudio(audioData: ArrayBuffer): Promise<void> {
 
   const source = ctx.createBufferSource()
   source.buffer = decoded
-  source.connect(dest)   // → Agora only. Local speakers excluded.
+  source.connect(dest)   // → Agora only. Never local speakers.
 
   const now     = ctx.currentTime
-  const startAt = Math.max(now + 0.02, playbackEndTime)
+  const startAt = Math.max(now + 0.005, playbackEndTime)
   source.start(startAt)
   playbackEndTime = startAt + decoded.duration
 }

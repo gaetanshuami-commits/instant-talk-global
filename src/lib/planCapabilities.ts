@@ -9,10 +9,11 @@ export const PREMIUM_LANGS: string[] = [
   "fr", "en", "es", "de", "it", "ru", "pt", "nl", "ar", "ja",
 ]
 
-// Business: 20 languages (premium + 10 more)
+// Business: all 23 UI languages + extra locales in SOURCE_LOCALE
 export const BUSINESS_LANGS: string[] = [
   ...PREMIUM_LANGS,
-  "ko", "hi", "tr", "zh-Hans", "sw", "ro", "el", "sv", "hu", "cs",
+  "ko", "hi", "tr", "zh", "sw", "ro", "el", "sv", "hu", "cs", "th", "vi",
+  "pl", "bg", "da", "fi", "sk", "no",
 ]
 
 // Enterprise: all 26 (null = no restriction — voice engine uses full SOURCE_LOCALE)

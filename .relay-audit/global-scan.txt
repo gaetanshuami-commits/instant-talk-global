@@ -1,0 +1,288 @@
+
+========================================================================================================================
+PATTERN: azure-speech-token
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\core\speakTranslatedText.ts:5: const res=await fetch("/api/azure-speech-token")
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:5: const res=await fetch("/api/azure-speech-token",{cache:"no-store"})
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:15: const r = await fetch("/api/azure-speech-token")
+
+========================================================================================================================
+PATTERN: agora-token
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\app\api\agora\route.ts:2: import { RtcTokenBuilder, RtcRole } from "agora-token";
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:72: const res = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}`);
+
+========================================================================================================================
+PATTERN: LanguageSelector
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:5: import LanguageSelector from "@/components/LanguageSelector"
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:121: <LanguageSelector title="Parle" value={sourceLang} onChange={(l) => { setSourceLang(l); startAzure(l); }} />
+C:\Users\gaeta\instant-talk-global\src\components\LanguageSelector.tsx:45: export default function LanguageSelector({
+C:\Users\gaeta\instant-talk-global\src\components\ui\LanguageSelector.tsx:18: export function LanguageSelector() {
+C:\Users\gaeta\instant-talk-global\src\components\ui\Navbar.tsx:4: import { LanguageSelector, useLanguage } from "@/lib/i18n/LanguageContext";
+C:\Users\gaeta\instant-talk-global\src\components\ui\Navbar.tsx:26: <LanguageSelector />
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\LanguageContext.tsx:71: export function LanguageSelector() {
+
+========================================================================================================================
+PATTERN: subtitle
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\app\page.tsx:61: {t("hero.subtitle")}
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:11: const subtitleSequence = [
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:30: translated: "Subtitles appear live with minimal latency."
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:49: const [subtitleIndex, setSubtitleIndex] = useState(0);
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:53: setSubtitleIndex((prev) => (prev + 1) % subtitleSequence.length);
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:108: const currentSubtitle = subtitleSequence[subtitleIndex];
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:137: Live subtitles simulation
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:143: A premium preview of how speakers, subtitles, and translated output can feel during a live meeting.
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:161: {currentSubtitle.speaker.slice(0, 1)}
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:166: {currentSubtitle.speaker}
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:207: {currentSubtitle.original}
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:216: {currentSubtitle.translated}
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:223: Subtitle latency
+C:\Users\gaeta\instant-talk-global\src\app\pricing\page.tsx:26: "Translated subtitles",
+C:\Users\gaeta\instant-talk-global\src\app\pricing\page.tsx:103: a: "Because the platform is built around real-time multilingual understanding, with natural voice rendering, synchronized subtitles and AI structure around every meeting."
+C:\Users\gaeta\instant-talk-global\src\components\LiveSubtitles.tsx:3: export default function LiveSubtitles({
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:43: callbacks.onSubtitle(e.result.text)
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:55: callbacks.onSubtitle(text)
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:6: subtitle: "Instant Talk est la première plateforme de visioconférence pensée dès l’origine pour la traduction vocale temps réel avec une voix naturelle. Chaque personne parle librement dans sa langue et la conversation reste fluide, claire et immédiatement compréhensible.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:43: cardSubtitle: "Semaine internationale",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:52: cardSubtitle: "Partage simple, accès immédiat",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:140: bookingSubtitle: "Réunion programmée",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:152: subtitle: "Instant Talk is the first video communication platform designed from the ground up for real-time voice translation with natural voice rendering. Every person speaks freely in their own language while the conversation stays fluid, clear and instantly understood.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:158: text: "Meetings, appointments, invitations, instant voice translation, synchronized subtitles, AI notes and automatic summaries in one premium experience."
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:163: p2Title: "Synchronized subtitles",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:164: p2Text: "Every participant follows the meeting with translated and perfectly readable subtitles.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:170: description: "Instant Talk combines global communication, bidirectional voice translation, subtitles, AI notes, automatic summaries, appointments and invitations in one platform.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:173: f2Title: "Translated subtitles",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:174: f2Text: "Readable, fluid and synchronized subtitles for immediate understanding.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:189: cardSubtitle: "International week",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:198: cardSubtitle: "Simple sharing, immediate access",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:253: step3Text: "Synchronized subtitles, automatic summary, AI notes and a clear experience for every participant.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:282: title: "Premium space ready for international meetings with instant voice translation, synchronized subtitles and a structured experience.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:286: bookingSubtitle: "Scheduled meeting",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:322: subtitle: "Instant Talk es la primera plataforma de videocomunicación diseñada desde el inicio para la traducción de voz en tiempo real con voz natural. Cada persona habla libremente en su idioma y la conversación sigue siendo fluida, clara e inmediatamente comprensible.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:333: subtitle: "Instant Talk ist die erste Videoplattform, die von Anfang an für Echtzeit-Sprachübersetzung mit natürlicher Stimme entwickelt wurde. Jede Person spricht frei in ihrer Sprache und das Gespräch bleibt flüssig, klar und sofort verständlich.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:344: subtitle: "Instant Talk è la prima piattaforma video progettata fin dall’inizio per la traduzione vocale in tempo reale con voce naturale. Ogni persona parla liberamente nella propria lingua e la conversazione resta fluida, chiara e immediatamente comprensibile.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:355: subtitle: "Instant Talk é a primeira plataforma de vídeo pensada desde o início para tradução de voz em tempo real com voz natural. Cada pessoa fala livremente em seu idioma e a conversa continua fluida, clara e imediatamente compreensível.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:366: subtitle: "Instant Talk is het eerste videoplatform dat vanaf de basis is ontworpen voor realtime spraakvertaling met natuurlijke stem. Iedereen spreekt vrij in zijn eigen taal en het gesprek blijft vloeiend, duidelijk en direct begrijpelijk.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:377: subtitle: "Instant Talk ?????????????????????????????????????????,???????????????????",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:388: subtitle: "Instant Talk ???????????????????????????????????????????????????????????????????????????????????????????",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:399: subtitle: "Instant Talk ?? ??? ???? ????? ????? ?? ??????? ??????? ??????? ??????? ???? ?????. ?? ??? ????? ????? ????? ????? ???????? ???? ?????? ??????? ?????.",
+
+========================================================================================================================
+PATTERN: caption
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:73: class CaptionBuffer {
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:105: private readonly captionBuffer = new CaptionBuffer();
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:221: this.captionBuffer.commitFinal(transcript);
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:223: this.captionBuffer.updateInterim(transcript);
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:226: const display = this.captionBuffer.getDisplayText();
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:228: log("caption update", {
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:236: const finalText = this.captionBuffer.flushFinalTranscript() || transcript;
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:140: Real-time multilingual captions
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:204: Original caption
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:213: Translated caption
+
+========================================================================================================================
+PATTERN: translation
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\app\api\agent\route.ts:22: const prompt = `Translate the following spoken text from ${sourceLang} to ${targetLang}. Return ONLY the translation, no extra text, no quotes, no markdown: "${text}"`;
+C:\Users\gaeta\instant-talk-global\src\app\api\deepgram-translate\route.ts:19: return NextResponse.json({ translation: data.results?.translation || "" });
+C:\Users\gaeta\instant-talk-global\src\app\api\deepgram-translate\route.ts:21: return NextResponse.json({ translation: "Error" }, { status: 500 });
+C:\Users\gaeta\instant-talk-global\src\app\api\translate\route.ts:30: return NextResponse.json({ translatedText: data.translations[0].text });
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:58: `Return only the translation, no quotes, no markdown:\n${text}`;
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:75: throw new Error(`No fallback translation provider available for ${targetLang}`);
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:101: translatedText: data?.translations?.[0]?.text ?? text,
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:166: const translation = await translateText(transcript, targetLang);
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:168: console.log("[voice-translate] translated", translation);
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:172: translatedText: translation.translatedText,
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:173: provider: translation.provider,
+C:\Users\gaeta\instant-talk-global\src\app\api\voice-translate\route.ts:180: error: "Voice translation failed",
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:69: setError(err instanceof Error ? err.message : "Translation failed");
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:248: Live translation demo
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:251: Test the translation engine now
+C:\Users\gaeta\instant-talk-global\src\app\demo\page.tsx:307: {detectedSourceLang || "Waiting for translation..."}
+C:\Users\gaeta\instant-talk-global\src\app\pricing\page.tsx:25: "Instant voice translation",
+C:\Users\gaeta\instant-talk-global\src\app\pricing\page.tsx:111: a: "Because the product promise is felt very quickly. Within minutes, the value of instant voice translation becomes obvious."
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:7: role: "speaker" | "translation";
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:15: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:16: { role: "translation", text: "????????????????", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:17: { role: "translation", text: "???? ??????? ?????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:21: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:22: { role: "translation", text: "????????????????", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:23: { role: "translation", text: "???? ??????? ?????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:27: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:28: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:29: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:33: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:34: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:35: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:39: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:40: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:41: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:45: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:46: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:47: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:51: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:52: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:53: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:57: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:58: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:59: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:63: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:64: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:65: { role: "translation", text: "???? ??????? ?????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:69: { role: "translation", text: "Hello, we are launching the project today.", color: "text-[#635bff]" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:70: { role: "translation", text: "Bonjour, nous lançons le projet aujourd’hui.", color: "text-emerald-600" },
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:71: { role: "translation", text: "????????????????", color: "text-fuchsia-600" }
+C:\Users\gaeta\instant-talk-global\src\components\ui\AutoTypingConversation.tsx:155: {isSpeaker ? "Speaker" : "Translation"}
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:9: SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:37: new SpeechSDK.TranslationRecognizer(config,audio)
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:60: e.result.translations.get(language)
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:19: export async function startVoiceTranslation(sourceLang, targetLang, callback) {
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:23: const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:28: const recognizer = new SpeechSDK.TranslationRecognizer(config, mic)
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:31: const translated = e.result.translations.get(target)
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:39: export function stopVoiceTranslation(recognizer: any) {
+C:\Users\gaeta\instant-talk-global\src\lib\translate.ts:21: throw new Error(data?.details || data?.error || "Translation failed");
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\LanguageContext.tsx:4: import { translations, LanguageCode } from "./translations";
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\LanguageContext.tsx:32: if (saved && saved in translations) setLangState(saved);
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\LanguageContext.tsx:47: let current: any = translations[lang];
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\LanguageContext.tsx:48: let fallbackFr: any = translations.fr;
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\LanguageContext.tsx:49: let fallbackEn: any = translations.en;
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:152: subtitle: "Instant Talk is the first video communication platform designed from the ground up for real-time voice translation with natural voice rendering. Every person speaks freely in their own language while the conversation stays fluid, clear and instantly understood.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:158: text: "Meetings, appointments, invitations, instant voice translation, synchronized subtitles, AI notes and automatic summaries in one premium experience."
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:170: description: "Instant Talk combines global communication, bidirectional voice translation, subtitles, AI notes, automatic summaries, appointments and invitations in one platform.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:171: f1Title: "Instant voice translation",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:209: c1Text: "Translation does not stay trapped in text. The conversation keeps its flow and presence.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:222: sub: "Instant Talk transforms global exchanges with instant and natural voice translation.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:251: step2Text: "Translation is delivered with a natural voice to keep the conversation alive.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:282: title: "Premium space ready for international meetings with instant voice translation, synchronized subtitles and a structured experience.",
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:405: export const translations = { fr, en, es, de, it, pt, nl, zh, ja, ar };
+C:\Users\gaeta\instant-talk-global\src\lib\i18n\translations.ts:406: export type LanguageCode = keyof typeof translations;
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\bridge-connection.ts:9: type: "transcript" | "translation" | "error" | "bridge_ready";
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\translation-queue.ts:1: export class TranslationQueue {
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:8: onTranslation: (text: string, language: string) => void;
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:15: onTranslation,
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:44: } else if (data.type === 'translation' && data.text) {
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:45: onTranslation(data.text, data.language || targetLanguage);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:79: }, [targetLanguage, onTranscript, onTranslation, onError]);
+
+========================================================================================================================
+PATTERN: recognizing
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:274: this.azureRecognizer.recognizing = (_sender, event) => {
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:277: log("azure recognizing:", text);
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:38: recognizer.recognizing = (s, e) => setTranscript(e.result.text);
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:39: recognizer.recognizing=(_,e)=>{
+
+========================================================================================================================
+PATTERN: recognized
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:280: this.azureRecognizer.recognized = (_sender, event) => {
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:283: log("azure recognized:", text);
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:39: recognizer.recognized = (s, e) => {
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:40: if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:49: recognizer.recognized=(_,e)=>{
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:30: recognizer.recognized = (s, e) => {
+
+========================================================================================================================
+PATTERN: speakTextAsync
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:331: this.azureSynthesizer!.speakTextAsync(
+C:\Users\gaeta\instant-talk-global\src\core\speakTranslatedText.ts:21: synth.speakTextAsync(text)
+C:\Users\gaeta\instant-talk-global\src\lib\azureSpeech.ts:21: synthesizer.speakTextAsync(
+
+========================================================================================================================
+PATTERN: speakSsmlAsync
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: createCustomAudioTrack
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:48: translatedCustomTrack = AgoraRTC.createCustomAudioTrack({
+
+========================================================================================================================
+PATTERN: publish
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:65: canPublish: true,
+C:\Users\gaeta\instant-talk-global\src\agent\bot.ts:67: canPublishData: true,
+C:\Users\gaeta\instant-talk-global\src\app\api\agora\route.ts:21: RtcRole.PUBLISHER,
+C:\Users\gaeta\instant-talk-global\src\app\api\agora-token\route.ts:27: RtcRole.PUBLISHER,
+C:\Users\gaeta\instant-talk-global\src\app\api\get-participant-token\route.ts:21: at.addGrant({ roomJoin: true, room: room, canPublish: true, canSubscribe: true });
+C:\Users\gaeta\instant-talk-global\src\app\api\livekit\get-token\route.ts:82: canPublish: true,
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:82: await client.publish([audio, video]);
+C:\Users\gaeta\instant-talk-global\src\components\AIAudioInjector.tsx:34: room.localParticipant.unpublishTrack(aiTrackRef.current);
+C:\Users\gaeta\instant-talk-global\src\components\AIAudioInjector.tsx:50: await room.localParticipant.publishTrack(aiTrackRef.current);
+C:\Users\gaeta\instant-talk-global\src\core\injectTranslatedTrack.ts:21: await client.unpublish([
+C:\Users\gaeta\instant-talk-global\src\core\injectTranslatedTrack.ts:35: await client.publish([
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:35: export async function ensureTranslatedAudioPublished(client: any) {
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:52: await client.publish([translatedCustomTrack])
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:3: export async function publishTranslatedAudioTrack(
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:32: await room.localParticipant.publishTrack(localTrack, {
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:40: await room.localParticipant.unpublishTrack(localTrack);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:42: console.error("[publish-translated-track] unpublish failed:", error);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:48: console.error("[publish-translated-track] stop failed:", error);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:54: console.error("[publish-translated-track] mediaTrack stop failed:", error);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:60: console.error("[publish-translated-track] audioContext close failed:", error);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\voice-queue.ts:2: import { publishTranslatedAudioTrack } from "@/lib/realtime/publish-translated-track";
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\voice-queue.ts:93: await publishTranslatedAudioTrack(this.room, audioBuffer);
+C:\Users\gaeta\instant-talk-global\components\LocalCamera.tsx:23: await localParticipant.unpublishTrack(pub.track);
+C:\Users\gaeta\instant-talk-global\components\LocalCamera.tsx:42: await localParticipant.publishTrack(localTrack, {
+C:\Users\gaeta\instant-talk-global\components\LocalCamera.tsx:62: localParticipant.unpublishTrack(localTrack).catch(() => {});
+
+========================================================================================================================
+PATTERN: play\(
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\app\camera-debug\page.tsx:89: await videoRef.current.play().catch(() => {});
+C:\Users\gaeta\instant-talk-global\src\app\room\[roomId]\RoomClient.tsx:79: video.play("local-video-renderer");
+C:\Users\gaeta\instant-talk-global\src\components\ui\HeroVideoPlayer.tsx:13: async function safePlay() {
+C:\Users\gaeta\instant-talk-global\src\components\ui\HeroVideoPlayer.tsx:16: const promise = video.play();
+C:\Users\gaeta\instant-talk-global\src\components\ui\HeroVideoPlayer.tsx:27: safePlay();
+C:\Users\gaeta\instant-talk-global\src\components\ui\HeroVideoPlayer.tsx:47: await video.play();
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-local-camera.ts:42: videoEl.play().catch(() => {});
+
+========================================================================================================================
+PATTERN: Audio\(
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\core\injectTranslatedTrack.ts:17: new Audio(url)
+C:\Users\gaeta\instant-talk-global\src\lib\AudioQueueManager.ts:6: async addAudio(base64Audio: string) {
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\bridge-connection.ts:125: sendAudio(audioData: Int16Array, targetLanguage: string): void {
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\voice-queue.ts:87: const audioBuffer = await this.fetchTtsAudio(item);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\voice-queue.ts:106: private async fetchTtsAudio(item: VoiceQueueItem): Promise<ArrayBuffer> {
+
+========================================================================================================================
+PATTERN: MediaStream
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\app\camera-debug\page.tsx:27: let stream: MediaStream | null = null;
+C:\Users\gaeta\instant-talk-global\src\app\camera-debug\page.tsx:58: const constraints: MediaStreamConstraints = {
+C:\Users\gaeta\instant-talk-global\src\components\AIAudioInjector.tsx:11: const destRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+C:\Users\gaeta\instant-talk-global\src\components\AIAudioInjector.tsx:15: const streamRef = useRef<MediaStream | null>(null);
+C:\Users\gaeta\instant-talk-global\src\components\AIAudioInjector.tsx:48: destRef.current = audioCtxRef.current.createMediaStreamDestination();
+C:\Users\gaeta\instant-talk-global\src\components\AIAudioInjector.tsx:62: mediaRecorderRef.current = new MediaRecorder(streamRef.current as MediaStream, { mimeType: 'audio/webm' });
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:4: let destinationNode: MediaStreamAudioDestinationNode | null = null
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:18: destinationNode = audioContext.createMediaStreamDestination()
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:42: const mediaStreamTrack = graph.destinationNode.stream.getAudioTracks()[0]
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:44: if (!mediaStreamTrack) {
+C:\Users\gaeta\instant-talk-global\src\core\translatedAudioPublisher.ts:49: mediaStreamTrack,
+C:\Users\gaeta\instant-talk-global\src\lib\AudioQueue.ts:3: public destination: MediaStreamAudioDestinationNode;
+C:\Users\gaeta\instant-talk-global\src\lib\AudioQueue.ts:9: this.destination = this.context.createMediaStreamDestination();
+C:\Users\gaeta\instant-talk-global\src\lib\deepgramStream.ts:7: private stream: MediaStream | null = null;
+C:\Users\gaeta\instant-talk-global\src\lib\deepgramStream.ts:29: this.mediaRecorder = new MediaRecorder(this.stream as MediaStream, { mimeType: 'audio/webm' });
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:22: const destination = audioContext.createMediaStreamDestination();
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\publish-translated-track.ts:27: throw new Error("No audio track available from MediaStreamDestination.");
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:20: const mediaStreamRef = useRef<MediaStream | null>(null);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:96: mediaStreamRef.current = stream;
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:102: const source = audioContext.createMediaStreamSource(stream);
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:131: if (mediaStreamRef.current) {
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:132: mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-deepgram-bridge.ts:133: mediaStreamRef.current = null;
+C:\Users\gaeta\instant-talk-global\src\lib\realtime\use-local-camera.ts:55: const tracks = (videoEl.srcObject as MediaStream).getTracks();
+C:\Users\gaeta\instant-talk-global\components\LocalCamera.tsx:49: videoRef.current.srcObject = localTrack.mediaStream;
+
+========================================================================================================================
+PATTERN: TranslationRecognizer
+========================================================================================================================
+C:\Users\gaeta\instant-talk-global\src\core\startRealtimeVoiceEngine.ts:37: new SpeechSDK.TranslationRecognizer(config,audio)
+C:\Users\gaeta\instant-talk-global\src\core\voiceEngine.ts:28: const recognizer = new SpeechSDK.TranslationRecognizer(config, mic)

@@ -1,0 +1,302 @@
+
+========================================================================================================================
+FICHIER: src/app/room/[roomId]/RoomClient.tsx
+========================================================================================================================
+    1: "use client"
+    2: import { useEffect, useRef, useState, useCallback } from "react"
+    3: import AgoraRTC, { IAgoraRTCClient, ILocalAudioTrack, ILocalVideoTrack } from "agora-rtc-sdk-ng"
+    4: import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk"
+    5: import LanguageSelector from "@/components/LanguageSelector"
+    6: 
+    7: export default function RoomClient({ roomId }: { roomId: string }) {
+    8:   const [isMicOn, setIsMicOn] = useState(true)
+    9:   const [isCamOn, setIsCamOn] = useState(true)
+   10:   const [sourceLang, setSourceLang] = useState("fr-FR")
+   11:   const [transcript, setTranscript] = useState("")
+   12:   
+   13:   const clientRef = useRef<IAgoraRTCClient | null>(null)
+   14:   const tracksRef = useRef<{ audio: ILocalAudioTrack; video: ILocalVideoTrack } | null>(null)
+   15:   const recognizerRef = useRef<SpeechSDK.SpeechRecognizer | null>(null)
+   16:   const isInitializing = useRef(false)
+   17: 
+   18:   const stopAzure = useCallback(() => {
+   19:     if (recognizerRef.current) {
+   20:       recognizerRef.current.stopContinuousRecognitionAsync(() => {
+   21:         recognizerRef.current?.close();
+   22:         recognizerRef.current = null;
+   23:       });
+   24:     }
+   25:   }, []);
+   26: 
+   27:   const startAzure = useCallback((lang: string) => {
+   28:     stopAzure();
+   29:     try {
+   30:       const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+   31:         process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || "", 
+   32:         process.env.NEXT_PUBLIC_AZURE_SPEECH_REGION || "francecentral"
+   33:       );
+   34:       speechConfig.speechRecognitionLanguage = lang;
+   35:       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+   36:       const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+   37: 
+   38:       recognizer.recognizing = (s, e) => setTranscript(e.result.text);
+   39:       recognizer.recognized = (s, e) => {
+   40:         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+   41:           setTranscript(e.result.text);
+   42:           setTimeout(() => setTranscript(""), 4000);
+   43:         }
+   44:       };
+   45:       recognizer.startContinuousRecognitionAsync();
+   46:       recognizerRef.current = recognizer;
+   47:     } catch (err) { /* Utilisation des clés système validées */ }
+   48:   }, [stopAzure]);
+   49: 
+   50:   const cleanup = useCallback(async () => {
+   51:     if (isInitializing.current) return;
+   52:     stopAzure();
+   53:     if (tracksRef.current) {
+   54:       tracksRef.current.video.stop();
+   55:       tracksRef.current.video.close();
+   56:       tracksRef.current.audio.close();
+   57:       tracksRef.current = null;
+   58:     }
+   59:     if (clientRef.current) {
+   60:       clientRef.current.removeAllListeners();
+   61:       await clientRef.current.leave();
+   62:       clientRef.current = null;
+   63:     }
+   64:   }, [stopAzure]);
+   65: 
+   66:   useEffect(() => {
+   67:     if (isInitializing.current) return;
+   68:     isInitializing.current = true;
+   69: 
+   70:     const start = async () => {
+   71:       try {
+   72:         const res = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}`);
+   73:         const data = await res.json();
+   74:         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+   75:         clientRef.current = client;
+   76: 
+   77:         const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks({ AEC: true, ANS: true }, { encoderConfig: "720p_1" });
+   78:         tracksRef.current = { audio, video };
+   79:         video.play("local-video-renderer");
+   80: 
+   81:         await client.join(process.env.NEXT_PUBLIC_AGORA_APP_ID!, roomId, data.token, data.uid);
+   82:         await client.publish([audio, video]);
+   83:         
+   84:         startAzure(sourceLang);
+   85:       } catch (e) { console.error("Init Error"); }
+   86:       finally { isInitializing.current = false; }
+   87:     };
+   88:     start();
+   89:     return () => { cleanup(); };
+   90:   }, [roomId, cleanup, startAzure, sourceLang]);
+   91: 
+   92:   return (
+   93:     <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden font-sans select-none">
+   94:       <main className="flex-1 relative flex items-center justify-center p-4">
+   95:         {/* ÉCRAN UNIQUE - DESIGN "ZOOM" CARRE VALIDÉ */}
+   96:         <div className="w-full h-full max-w-[1600px] relative bg-[#1a1a1a] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+   97:           <div id="local-video-renderer" className="h-full w-full object-cover [&_video]:!transform [&_video]:!scale-x-[-1]" />
+   98:           
+   99:           {/* TRADUCTION NETTE STYLE NETFLIX SANS POLLUTION */}
+  100:           <div className="absolute bottom-20 inset-x-0 flex justify-center px-8 pointer-events-none z-50">
+  101:             <div className="bg-black/20 backdrop-blur-md px-6 py-2 rounded-2xl">
+  102:               <p className="text-white text-lg md:text-2xl font-normal text-center leading-snug">
+  103:                 {transcript}
+  104:               </p>
+  105:             </div>
+  106:           </div>
+  107: 
+  108:           <div className="absolute bottom-4 left-6 bg-black/60 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Moi</div>
+  109:           {!isCamOn && <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 text-6xl font-thin">👤</div>}
+  110:         </div>
+  111:       </main>
+  112: 
+  113:       <footer className="h-24 bg-[#1a1a1a] flex items-center justify-between px-10 z-50 border-t border-white/5">
+  114:         <div className="w-1/4 text-[10px] font-black opacity-20 uppercase tracking-[0.3em]">{roomId}</div>
+  115:         <div className="flex items-center gap-6">
+  116:           <button onClick={async () => { if(!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }} 
+  117:                   className={`p-5 rounded-2xl transition-all ${isMicOn ? 'bg-zinc-800' : 'bg-red-600'}`}>🎙️</button>
+  118:           <button onClick={async () => { if(!tracksRef.current) return; const n = !isCamOn; await tracksRef.current.video.setEnabled(n); setIsCamOn(n) }} 
+  119:                   className={`p-5 rounded-2xl transition-all ${isCamOn ? 'bg-zinc-800' : 'bg-red-600'}`}>📹</button>
+  120:           <div className="h-10 w-[1px] bg-white/10 mx-2" />
+  121:           <LanguageSelector title="Parle" value={sourceLang} onChange={(l) => { setSourceLang(l); startAzure(l); }} />
+  122:           <button onClick={() => { cleanup(); window.location.href="/" }} className="bg-[#e02828] hover:bg-[#ff3b3b] px-10 py-4 rounded-2xl font-black text-sm uppercase">Quitter</button>
+  123:         </div>
+  124:         <div className="w-1/4 flex justify-end opacity-40 font-bold"><span className="bg-white/5 px-4 py-1 rounded-full border border-white/5 text-sm">1</span></div>
+  125:       </footer>
+  126:     </div>
+  127:   )
+  128: }
+
+========================================================================================================================
+PATTERN: SpeechConfig
+========================================================================================================================
+   30:       const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+   34:       speechConfig.speechRecognitionLanguage = lang;
+   36:       const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+
+========================================================================================================================
+PATTERN: SpeechTranslationConfig
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: TranslationRecognizer
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: speechRecognitionLanguage
+========================================================================================================================
+   34:       speechConfig.speechRecognitionLanguage = lang;
+
+========================================================================================================================
+PATTERN: addTargetLanguage
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: recognizing
+========================================================================================================================
+   38:       recognizer.recognizing = (s, e) => setTranscript(e.result.text);
+
+========================================================================================================================
+PATTERN: recognized
+========================================================================================================================
+   39:       recognizer.recognized = (s, e) => {
+   40:         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+
+========================================================================================================================
+PATTERN: synthes
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: AudioConfig
+========================================================================================================================
+   35:       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+   36:       const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+
+========================================================================================================================
+PATTERN: avatar
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: subtitle
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: caption
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: transcript
+========================================================================================================================
+   11:   const [transcript, setTranscript] = useState("")
+   38:       recognizer.recognizing = (s, e) => setTranscript(e.result.text);
+   41:           setTranscript(e.result.text);
+   42:           setTimeout(() => setTranscript(""), 4000);
+  103:                 {transcript}
+
+========================================================================================================================
+PATTERN: translation
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: targetLang
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: sourceLang
+========================================================================================================================
+   10:   const [sourceLang, setSourceLang] = useState("fr-FR")
+   84:         startAzure(sourceLang);
+   90:   }, [roomId, cleanup, startAzure, sourceLang]);
+  121:           <LanguageSelector title="Parle" value={sourceLang} onChange={(l) => { setSourceLang(l); startAzure(l); }} />
+
+========================================================================================================================
+PATTERN: language
+========================================================================================================================
+    5: import LanguageSelector from "@/components/LanguageSelector"
+   34:       speechConfig.speechRecognitionLanguage = lang;
+  121:           <LanguageSelector title="Parle" value={sourceLang} onChange={(l) => { setSourceLang(l); startAzure(l); }} />
+
+========================================================================================================================
+PATTERN: azure
+========================================================================================================================
+   18:   const stopAzure = useCallback(() => {
+   27:   const startAzure = useCallback((lang: string) => {
+   28:     stopAzure();
+   31:         process.env.NEXT_PUBLIC_AZURE_SPEECH_KEY || "", 
+   32:         process.env.NEXT_PUBLIC_AZURE_SPEECH_REGION || "francecentral"
+   48:   }, [stopAzure]);
+   52:     stopAzure();
+   64:   }, [stopAzure]);
+   84:         startAzure(sourceLang);
+   90:   }, [roomId, cleanup, startAzure, sourceLang]);
+  121:           <LanguageSelector title="Parle" value={sourceLang} onChange={(l) => { setSourceLang(l); startAzure(l); }} />
+
+========================================================================================================================
+PATTERN: token
+========================================================================================================================
+   72:         const res = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}`);
+   81:         await client.join(process.env.NEXT_PUBLIC_AGORA_APP_ID!, roomId, data.token, data.uid);
+
+========================================================================================================================
+PATTERN: english
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: en-US
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: en\b
+========================================================================================================================
+   72:         const res = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}`);
+   81:         await client.join(process.env.NEXT_PUBLIC_AGORA_APP_ID!, roomId, data.token, data.uid);
+   93:     <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden font-sans select-none">
+   96:         <div className="w-full h-full max-w-[1600px] relative bg-[#1a1a1a] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+  113:       <footer className="h-24 bg-[#1a1a1a] flex items-center justify-between px-10 z-50 border-t border-white/5">
+
+========================================================================================================================
+PATTERN: zh-Hans
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+LANGUES HARDCODEES DETECTEES
+========================================================================================================================
+   10:   const [sourceLang, setSourceLang] = useState("fr-FR")
+
+========================================================================================================================
+ETAT / UI / FLUX TEXTE-AUDIO
+========================================================================================================================
+    2: import { useEffect, useRef, useState, useCallback } from "react"
+    3: import AgoraRTC, { IAgoraRTCClient, ILocalAudioTrack, ILocalVideoTrack } from "agora-rtc-sdk-ng"
+    8:   const [isMicOn, setIsMicOn] = useState(true)
+    9:   const [isCamOn, setIsCamOn] = useState(true)
+   10:   const [sourceLang, setSourceLang] = useState("fr-FR")
+   11:   const [transcript, setTranscript] = useState("")
+   14:   const tracksRef = useRef<{ audio: ILocalAudioTrack; video: ILocalVideoTrack } | null>(null)
+   35:       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+   36:       const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+   38:       recognizer.recognizing = (s, e) => setTranscript(e.result.text);
+   41:           setTranscript(e.result.text);
+   42:           setTimeout(() => setTranscript(""), 4000);
+   56:       tracksRef.current.audio.close();
+   77:         const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks({ AEC: true, ANS: true }, { encoderConfig: "720p_1" });
+   78:         tracksRef.current = { audio, video };
+   82:         await client.publish([audio, video]);
+  103:                 {transcript}
+  116:           <button onClick={async () => { if(!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }} 

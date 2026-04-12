@@ -33,20 +33,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ meetings: [], prismaReady: false });
   }
 
-  const meetings = await meetingModel.findMany({
-    orderBy: { startsAt: "asc" },
-    include: {
-      invitees: true,
-      reminders: true,
-    },
-  });
+  try {
+    const meetings = await meetingModel.findMany({
+      orderBy: { startsAt: "asc" },
+      include: {
+        invitees: true,
+        reminders: true,
+      },
+    });
 
-  const origin = req.nextUrl.origin;
+    const origin = req.nextUrl.origin;
 
-  return NextResponse.json({
-    meetings: meetings.map((meeting: any) => serializeMeeting(origin, meeting)),
-    prismaReady: true,
-  });
+    return NextResponse.json({
+      meetings: meetings.map((meeting: any) => serializeMeeting(origin, meeting)),
+      prismaReady: true,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[meetings GET]", msg);
+    return NextResponse.json({ meetings: [], prismaReady: false, error: "db_unavailable", detail: msg });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -81,40 +87,48 @@ export async function POST(req: NextRequest) {
   const inviteToken = createInviteToken();
   const origin = req.nextUrl.origin;
 
-  const meeting = await meetingModel.create({
-    data: {
-      title,
-      description,
-      hostEmail,
-      roomId,
-      inviteToken,
-      startsAt,
-      endsAt,
-      timezone,
-      status: meetingStatusFromDates(startsAt, endsAt),
-      invitees: {
-        create: invitees
-          .filter((email: unknown) => typeof email === "string" && email.trim())
-          .map((email: string) => ({
-            email: email.trim().toLowerCase(),
-          })),
+  try {
+    const meeting = await meetingModel.create({
+      data: {
+        title,
+        description,
+        hostEmail,
+        roomId,
+        inviteToken,
+        startsAt,
+        endsAt,
+        timezone,
+        status: meetingStatusFromDates(startsAt, endsAt),
+        invitees: {
+          create: invitees
+            .filter((email: unknown) => typeof email === "string" && email.trim())
+            .map((email: string) => ({
+              email: email.trim().toLowerCase(),
+            })),
+        },
+        reminders: {
+          create: [
+            { remindAt: new Date(startsAt.getTime() - 24 * 60 * 60 * 1000) },
+            { remindAt: new Date(startsAt.getTime() - 60 * 60 * 1000) },
+            { remindAt: new Date(startsAt.getTime() - 15 * 60 * 1000) },
+          ],
+        },
       },
-      reminders: {
-        create: [
-          { remindAt: new Date(startsAt.getTime() - 24 * 60 * 60 * 1000) },
-          { remindAt: new Date(startsAt.getTime() - 60 * 60 * 1000) },
-          { remindAt: new Date(startsAt.getTime() - 15 * 60 * 1000) },
-        ],
+      include: {
+        invitees: true,
+        reminders: true,
       },
-    },
-    include: {
-      invitees: true,
-      reminders: true,
-    },
-  });
+    });
 
-  return NextResponse.json({
-    meeting: serializeMeeting(origin, meeting),
-    joinLink: buildMeetingLink(origin, meeting.roomId, meeting.inviteToken),
-  });
+    return NextResponse.json({
+      meeting: serializeMeeting(origin, meeting),
+      joinLink: buildMeetingLink(origin, meeting.roomId, meeting.inviteToken),
+    });
+  } catch (err) {
+    console.error("[meetings POST]", err);
+    return NextResponse.json(
+      { error: "db_unavailable", detail: "La base de données est inaccessible. Vérifiez Supabase." },
+      { status: 503 }
+    );
+  }
 }

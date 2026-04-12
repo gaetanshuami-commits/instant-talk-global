@@ -51,7 +51,16 @@ export const AnyNull = runtime.AnyNull
 
 
 export const ModelName = {
-  Subscription: 'Subscription'
+  Subscription: 'Subscription',
+  RoomSlot: 'RoomSlot',
+  Meeting: 'Meeting',
+  MeetingInvite: 'MeetingInvite',
+  MeetingReminder: 'MeetingReminder',
+  Contact: 'Contact',
+  ChatRoom: 'ChatRoom',
+  ChatMessage: 'ChatMessage',
+  Webinar: 'Webinar',
+  UserSettings: 'UserSettings'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -78,11 +87,141 @@ export const SubscriptionScalarFieldEnum = {
   status: 'status',
   customerEmail: 'customerEmail',
   currentPeriodEnd: 'currentPeriodEnd',
+  trialEndsAt: 'trialEndsAt',
+  enterpriseEnabled: 'enterpriseEnabled',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type SubscriptionScalarFieldEnum = (typeof SubscriptionScalarFieldEnum)[keyof typeof SubscriptionScalarFieldEnum]
+
+
+export const RoomSlotScalarFieldEnum = {
+  id: 'id',
+  channelName: 'channelName',
+  customerRef: 'customerRef',
+  uid: 'uid',
+  plan: 'plan',
+  joinedAt: 'joinedAt'
+} as const
+
+export type RoomSlotScalarFieldEnum = (typeof RoomSlotScalarFieldEnum)[keyof typeof RoomSlotScalarFieldEnum]
+
+
+export const MeetingScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  description: 'description',
+  hostEmail: 'hostEmail',
+  roomId: 'roomId',
+  inviteToken: 'inviteToken',
+  startsAt: 'startsAt',
+  endsAt: 'endsAt',
+  timezone: 'timezone',
+  status: 'status',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type MeetingScalarFieldEnum = (typeof MeetingScalarFieldEnum)[keyof typeof MeetingScalarFieldEnum]
+
+
+export const MeetingInviteScalarFieldEnum = {
+  id: 'id',
+  meetingId: 'meetingId',
+  email: 'email',
+  name: 'name',
+  status: 'status',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type MeetingInviteScalarFieldEnum = (typeof MeetingInviteScalarFieldEnum)[keyof typeof MeetingInviteScalarFieldEnum]
+
+
+export const MeetingReminderScalarFieldEnum = {
+  id: 'id',
+  meetingId: 'meetingId',
+  remindAt: 'remindAt',
+  sentAt: 'sentAt',
+  channel: 'channel',
+  createdAt: 'createdAt'
+} as const
+
+export type MeetingReminderScalarFieldEnum = (typeof MeetingReminderScalarFieldEnum)[keyof typeof MeetingReminderScalarFieldEnum]
+
+
+export const ContactScalarFieldEnum = {
+  id: 'id',
+  customerRef: 'customerRef',
+  name: 'name',
+  email: 'email',
+  company: 'company',
+  role: 'role',
+  lang: 'lang',
+  color: 'color',
+  starred: 'starred',
+  online: 'online',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContactScalarFieldEnum = (typeof ContactScalarFieldEnum)[keyof typeof ContactScalarFieldEnum]
+
+
+export const ChatRoomScalarFieldEnum = {
+  id: 'id',
+  customerRef: 'customerRef',
+  name: 'name',
+  emoji: 'emoji',
+  color: 'color',
+  createdAt: 'createdAt'
+} as const
+
+export type ChatRoomScalarFieldEnum = (typeof ChatRoomScalarFieldEnum)[keyof typeof ChatRoomScalarFieldEnum]
+
+
+export const ChatMessageScalarFieldEnum = {
+  id: 'id',
+  roomId: 'roomId',
+  author: 'author',
+  text: 'text',
+  lang: 'lang',
+  mine: 'mine',
+  createdAt: 'createdAt'
+} as const
+
+export type ChatMessageScalarFieldEnum = (typeof ChatMessageScalarFieldEnum)[keyof typeof ChatMessageScalarFieldEnum]
+
+
+export const WebinarScalarFieldEnum = {
+  id: 'id',
+  customerRef: 'customerRef',
+  title: 'title',
+  topic: 'topic',
+  host: 'host',
+  startsAt: 'startsAt',
+  durationMins: 'durationMins',
+  maxAttendees: 'maxAttendees',
+  langs: 'langs',
+  color: 'color',
+  status: 'status',
+  roomId: 'roomId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type WebinarScalarFieldEnum = (typeof WebinarScalarFieldEnum)[keyof typeof WebinarScalarFieldEnum]
+
+
+export const UserSettingsScalarFieldEnum = {
+  id: 'id',
+  customerRef: 'customerRef',
+  data: 'data',
+  updatedAt: 'updatedAt'
+} as const
+
+export type UserSettingsScalarFieldEnum = (typeof UserSettingsScalarFieldEnum)[keyof typeof UserSettingsScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -91,6 +230,13 @@ export const SortOrder = {
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const QueryMode = {
@@ -107,4 +253,13 @@ export const NullsOrder = {
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 

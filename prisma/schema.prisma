@@ -1,11 +1,10 @@
-﻿generator client {
+generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Subscription {
@@ -104,4 +103,86 @@ enum InviteStatus {
 
 enum ReminderChannel {
   EMAIL
+}
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+model Contact {
+  id          String   @id @default(cuid())
+  customerRef String
+  name        String
+  email       String
+  company     String?
+  role        String?
+  lang        String?
+  color       String   @default("#6366f1")
+  starred     Boolean  @default(false)
+  online      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([customerRef, email])
+  @@index([customerRef])
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+model ChatRoom {
+  id          String        @id @default(cuid())
+  customerRef String
+  name        String
+  emoji       String?
+  color       String        @default("#6366f1")
+  createdAt   DateTime      @default(now())
+  messages    ChatMessage[]
+
+  @@index([customerRef])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  roomId    String
+  author    String
+  text      String
+  lang      String?
+  mine      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@index([createdAt])
+}
+
+// ── Webinaires ────────────────────────────────────────────────────────────────
+model Webinar {
+  id           String        @id @default(cuid())
+  customerRef  String
+  title        String
+  topic        String?
+  host         String
+  startsAt     DateTime
+  durationMins Int           @default(60)
+  maxAttendees Int           @default(1000)
+  langs        String[]      @default([])
+  color        String        @default("#6366f1")
+  status       WebinarStatus @default(UPCOMING)
+  roomId       String        @default("")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([customerRef])
+  @@index([startsAt])
+}
+
+enum WebinarStatus {
+  UPCOMING
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+// ── Paramètres utilisateur ────────────────────────────────────────────────────
+model UserSettings {
+  id          String   @id @default(cuid())
+  customerRef String   @unique
+  data        Json     @default("{}")
+  updatedAt   DateTime @updatedAt
 }

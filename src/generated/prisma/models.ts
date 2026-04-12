@@ -9,4 +9,13 @@
  * 🟢 You can import this file directly.
  */
 export type * from './models/Subscription'
+export type * from './models/RoomSlot'
+export type * from './models/Meeting'
+export type * from './models/MeetingInvite'
+export type * from './models/MeetingReminder'
+export type * from './models/Contact'
+export type * from './models/ChatRoom'
+export type * from './models/ChatMessage'
+export type * from './models/Webinar'
+export type * from './models/UserSettings'
 export type * from './commonInputTypes'

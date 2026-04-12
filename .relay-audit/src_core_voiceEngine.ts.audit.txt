@@ -1,0 +1,193 @@
+
+========================================================================================================================
+FICHIER: src/core/voiceEngine.ts
+========================================================================================================================
+    1: import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk"
+    2: 
+    3: export function normalizeLang(lang: string) {
+    4:   const map: Record<string, string> = {
+    5:     fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT",
+    6:     ru: "ru-RU", pl: "pl-PL", nl: "nl-NL", pt: "pt-PT", ar: "ar-SA",
+    7:     ja: "ja-JP", ko: "ko-KR", hi: "hi-IN", tr: "tr-TR", zh: "zh-CN",
+    8:     sw: "sw-KE", sv: "sv-SE", el: "el-GR", hu: "hu-HU", cs: "cs-CZ",
+    9:     bg: "bg-BG", da: "da-DK", fi: "fi-FI", sk: "sk-SK", no: "nb-NO"
+   10:   }
+   11:   return map[lang] || lang
+   12: }
+   13: 
+   14: async function getToken() {
+   15:   const r = await fetch("/api/azure-speech-token")
+   16:   return r.json()
+   17: }
+   18: 
+   19: export async function startVoiceTranslation(sourceLang, targetLang, callback) {
+   20:   const source = normalizeLang(sourceLang)
+   21:   const target = normalizeLang(targetLang)
+   22:   const { token, region } = await getToken()
+   23:   const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+   24:   config.speechRecognitionLanguage = source
+   25:   config.addTargetLanguage(target)
+   26: 
+   27:   const mic = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
+   28:   const recognizer = new SpeechSDK.TranslationRecognizer(config, mic)
+   29: 
+   30:   recognizer.recognized = (s, e) => {
+   31:     const translated = e.result.translations.get(target)
+   32:     if (translated) callback(e.result.text, translated)
+   33:   }
+   34: 
+   35:   recognizer.startContinuousRecognitionAsync()
+   36:   return recognizer
+   37: }
+   38: 
+   39: export function stopVoiceTranslation(recognizer: any) {
+   40:   if (recognizer && !recognizer.isDisposed) {
+   41:     try { recognizer.stopContinuousRecognitionAsync(() => recognizer.close()) } catch (e) {}
+   42:   }
+   43: }
+
+========================================================================================================================
+PATTERN: SpeechConfig
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: SpeechTranslationConfig
+========================================================================================================================
+   23:   const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+
+========================================================================================================================
+PATTERN: TranslationRecognizer
+========================================================================================================================
+   28:   const recognizer = new SpeechSDK.TranslationRecognizer(config, mic)
+
+========================================================================================================================
+PATTERN: speechRecognitionLanguage
+========================================================================================================================
+   24:   config.speechRecognitionLanguage = source
+
+========================================================================================================================
+PATTERN: addTargetLanguage
+========================================================================================================================
+   25:   config.addTargetLanguage(target)
+
+========================================================================================================================
+PATTERN: recognizing
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: recognized
+========================================================================================================================
+   30:   recognizer.recognized = (s, e) => {
+
+========================================================================================================================
+PATTERN: synthes
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: AudioConfig
+========================================================================================================================
+   27:   const mic = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
+
+========================================================================================================================
+PATTERN: avatar
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: subtitle
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: caption
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: transcript
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: translation
+========================================================================================================================
+   19: export async function startVoiceTranslation(sourceLang, targetLang, callback) {
+   23:   const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+   28:   const recognizer = new SpeechSDK.TranslationRecognizer(config, mic)
+   31:     const translated = e.result.translations.get(target)
+   39: export function stopVoiceTranslation(recognizer: any) {
+
+========================================================================================================================
+PATTERN: targetLang
+========================================================================================================================
+   19: export async function startVoiceTranslation(sourceLang, targetLang, callback) {
+   21:   const target = normalizeLang(targetLang)
+   25:   config.addTargetLanguage(target)
+
+========================================================================================================================
+PATTERN: sourceLang
+========================================================================================================================
+   19: export async function startVoiceTranslation(sourceLang, targetLang, callback) {
+   20:   const source = normalizeLang(sourceLang)
+
+========================================================================================================================
+PATTERN: language
+========================================================================================================================
+   24:   config.speechRecognitionLanguage = source
+   25:   config.addTargetLanguage(target)
+
+========================================================================================================================
+PATTERN: azure
+========================================================================================================================
+   15:   const r = await fetch("/api/azure-speech-token")
+
+========================================================================================================================
+PATTERN: token
+========================================================================================================================
+   14: async function getToken() {
+   15:   const r = await fetch("/api/azure-speech-token")
+   22:   const { token, region } = await getToken()
+   23:   const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+
+========================================================================================================================
+PATTERN: english
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+PATTERN: en-US
+========================================================================================================================
+    5:     fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT",
+
+========================================================================================================================
+PATTERN: en\b
+========================================================================================================================
+    5:     fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT",
+   14: async function getToken() {
+   15:   const r = await fetch("/api/azure-speech-token")
+   22:   const { token, region } = await getToken()
+   23:   const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+
+========================================================================================================================
+PATTERN: zh-Hans
+========================================================================================================================
+[AUCUN RESULTAT]
+
+========================================================================================================================
+LANGUES HARDCODEES DETECTEES
+========================================================================================================================
+    5:     fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT",
+    7:     ja: "ja-JP", ko: "ko-KR", hi: "hi-IN", tr: "tr-TR", zh: "zh-CN",
+
+========================================================================================================================
+ETAT / UI / FLUX TEXTE-AUDIO
+========================================================================================================================
+   19: export async function startVoiceTranslation(sourceLang, targetLang, callback) {
+   23:   const config = SpeechSDK.SpeechTranslationConfig.fromAuthorizationToken(token, region)
+   27:   const mic = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
+   28:   const recognizer = new SpeechSDK.TranslationRecognizer(config, mic)
+   31:     const translated = e.result.translations.get(target)
+   39: export function stopVoiceTranslation(recognizer: any) {

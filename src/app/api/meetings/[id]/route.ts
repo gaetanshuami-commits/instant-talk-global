@@ -8,19 +8,17 @@ export async function GET(_: NextRequest, ctx: Params) {
   const db = prisma as any;
   const { id } = await ctx.params;
 
-  const meeting = await db.meeting.findUnique({
-    where: { id },
-    include: {
-      invitees: true,
-      reminders: true,
-    },
-  });
-
-  if (!meeting) {
-    return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
+  try {
+    const meeting = await db.meeting.findUnique({
+      where: { id },
+      include: { invitees: true, reminders: true },
+    });
+    if (!meeting) return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
+    return NextResponse.json({ meeting });
+  } catch (err) {
+    console.error("[meeting GET]", err);
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
   }
-
-  return NextResponse.json({ meeting });
 }
 
 export async function PATCH(req: NextRequest, ctx: Params) {
@@ -28,45 +26,45 @@ export async function PATCH(req: NextRequest, ctx: Params) {
   const { id } = await ctx.params;
   const body = await req.json();
 
-  const current = await db.meeting.findUnique({ where: { id } });
+  try {
+    const current = await db.meeting.findUnique({ where: { id } });
+    if (!current) return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
 
-  if (!current) {
-    return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
+    const startsAt = body.startsAt ? new Date(body.startsAt) : current.startsAt;
+    const endsAt = body.endsAt ? new Date(body.endsAt) : current.endsAt;
+
+    if (endsAt.getTime() <= startsAt.getTime()) {
+      return NextResponse.json({ error: "invalid_meeting_range" }, { status: 400 });
+    }
+
+    const meeting = await db.meeting.update({
+      where: { id },
+      data: {
+        title: body.title ?? current.title,
+        description: body.description ?? current.description,
+        startsAt,
+        endsAt,
+        timezone: body.timezone ?? current.timezone,
+        status: meetingStatusFromDates(startsAt, endsAt) as any,
+      },
+      include: { invitees: true, reminders: true },
+    });
+    return NextResponse.json({ meeting });
+  } catch (err) {
+    console.error("[meeting PATCH]", err);
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
   }
-
-  const startsAt = body.startsAt ? new Date(body.startsAt) : current.startsAt;
-  const endsAt = body.endsAt ? new Date(body.endsAt) : current.endsAt;
-
-  if (endsAt.getTime() <= startsAt.getTime()) {
-    return NextResponse.json({ error: "invalid_meeting_range" }, { status: 400 });
-  }
-
-  const meeting = await db.meeting.update({
-    where: { id },
-    data: {
-      title: body.title ?? current.title,
-      description: body.description ?? current.description,
-      startsAt,
-      endsAt,
-      timezone: body.timezone ?? current.timezone,
-      status: meetingStatusFromDates(startsAt, endsAt) as any,
-    },
-    include: {
-      invitees: true,
-      reminders: true,
-    },
-  });
-
-  return NextResponse.json({ meeting });
 }
 
 export async function DELETE(_: NextRequest, ctx: Params) {
   const db = prisma as any;
   const { id } = await ctx.params;
 
-  await db.meeting.delete({
-    where: { id },
-  });
-
-  return NextResponse.json({ ok: true });
+  try {
+    await db.meeting.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[meeting DELETE]", err);
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
+  }
 }

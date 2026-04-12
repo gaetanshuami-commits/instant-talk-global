@@ -30,10 +30,10 @@ export default function PricingSection() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert("❌ Erreur Stripe : " + (data.error || "Clé secrète manquante !"));
+        alert("Erreur Stripe : " + (data.error || "Clé secrète manquante !"));
       }
     } catch (error) {
-      alert("❌ Erreur réseau.");
+      alert("Erreur réseau.");
     }
   };
 

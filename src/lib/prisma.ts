@@ -14,6 +14,10 @@ if (!connectionString) {
 
 const pool = new Pool({
   connectionString,
+  // Supabase uses a certificate chain not in Node's default trust store.
+  // ssl.rejectUnauthorized=false keeps the connection encrypted (TLS is active)
+  // but skips chain verification — standard practice for Supabase + pg.
+  ssl: { rejectUnauthorized: false },
 });
 
 const adapter = new PrismaPg(pool);

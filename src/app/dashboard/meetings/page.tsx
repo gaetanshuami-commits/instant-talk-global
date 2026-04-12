@@ -1,6 +1,8 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { AlertTriangle } from "lucide-react";
 
 type Meeting = {
   id: string;
@@ -40,17 +42,28 @@ function initials(value: string) {
     .toUpperCase();
 }
 
-export default function MeetingsPage() {
+function MeetingsPageInner() {
+  const searchParams = useSearchParams();
+
+  // Pre-fill dates from ?date=YYYY-MM-DD (set by calendar page)
+  const prefillDate = searchParams?.get("date") ?? null;
+  const defaultStartsAt = prefillDate
+    ? formatInputDate(new Date(`${prefillDate}T09:00`))
+    : formatInputDate(new Date(Date.now() + 60 * 60 * 1000));
+  const defaultEndsAt = prefillDate
+    ? formatInputDate(new Date(`${prefillDate}T10:00`))
+    : formatInputDate(new Date(Date.now() + 2 * 60 * 60 * 1000));
+
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [hostEmail, setHostEmail] = useState("");
   const [invitees, setInvitees] = useState("");
-  const [startsAt, setStartsAt] = useState(formatInputDate(new Date(Date.now() + 60 * 60 * 1000)));
-  const [endsAt, setEndsAt] = useState(formatInputDate(new Date(Date.now() + 2 * 60 * 60 * 1000)));
+  const [startsAt, setStartsAt] = useState(defaultStartsAt);
+  const [endsAt, setEndsAt] = useState(defaultEndsAt);
   const [createdLink, setCreatedLink] = useState("");
   const [status, setStatus] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(prefillDate ?? new Date().toISOString().slice(0, 10));
   const [apiReady, setApiReady] = useState(true);
 
   async function loadMeetings() {
@@ -114,7 +127,13 @@ export default function MeetingsPage() {
       const data = text ? JSON.parse(text) : {};
 
       if (!res.ok) {
-        setStatus("Impossible de créer la réunion pour le moment");
+        if (data.error === "db_unavailable") {
+          setStatus("Base de données inaccessible — vérifiez Supabase");
+        } else if (data.error === "invalid_payload") {
+          setStatus("Champs manquants : titre, email hôte et dates sont requis");
+        } else {
+          setStatus(data.detail || data.error || "Impossible de créer la réunion");
+        }
         return;
       }
 
@@ -161,96 +180,33 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top left, rgba(87,114,255,0.18), transparent 22%), radial-gradient(circle at top right, rgba(20,184,166,0.14), transparent 18%), linear-gradient(180deg, #060b16 0%, #09111f 46%, #0a1220 100%)",
-        color: "white",
-      }}
-    >
-      <div style={{ display: "grid", gridTemplateColumns: "270px 1fr", minHeight: "100vh" }}>
-        <aside
-          style={{
-            borderRight: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(7,12,24,0.72)",
-            backdropFilter: "blur(18px)",
-            padding: "28px 20px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "24px",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "13px", letterSpacing: "0.18em", opacity: 0.65, marginBottom: "10px" }}>
-              INSTANT TALK GLOBAL
-            </div>
-            <div style={{ fontSize: "28px", fontWeight: 800, lineHeight: 1.05 }}>
-              Meetings
-              <div style={{ color: "#8ba3ff" }}>Workspace</div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: "linear-gradient(180deg, rgba(99,102,241,0.2), rgba(99,102,241,0.08))",
-              border: "1px solid rgba(139,163,255,0.22)",
-              borderRadius: "20px",
-              padding: "16px",
-            }}
-          >
-            <div style={{ fontSize: "12px", opacity: 0.75, marginBottom: "8px" }}>Planification premium</div>
-            <div style={{ fontSize: "22px", fontWeight: 800, marginBottom: "8px" }}>Plus simple que Meet</div>
-            <div style={{ fontSize: "14px", opacity: 0.8, lineHeight: 1.5 }}>
-              Crée des sessions, génère des liens, invite tes participants et pilote tout depuis un seul espace.
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: "10px" }}>
-            {[
-              "Vue d’ensemble",
-              "Réunions à venir",
-              "Historique",
-              "Calendrier",
-              "Invitations",
-              "Salles sécurisées",
-            ].map((item, i) => (
-              <div
-                key={item}
-                style={{
-                  height: "46px",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "0 14px",
-                  borderRadius: "14px",
-                  background: i === 0 ? "rgba(99,102,241,0.18)" : "transparent",
-                  border: i === 0 ? "1px solid rgba(139,163,255,0.22)" : "1px solid transparent",
-                  color: i === 0 ? "#dfe5ff" : "rgba(255,255,255,0.72)",
-                  fontWeight: 600,
-                }}
-              >
-                {item}
-              </div>
-            ))}
-          </div>
-
-          <div
-            style={{
-              marginTop: "auto",
-              padding: "16px",
-              borderRadius: "18px",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <div style={{ fontSize: "13px", opacity: 0.7, marginBottom: "8px" }}>Statut backend</div>
-            <div style={{ fontSize: "16px", fontWeight: 700, color: apiReady ? "#86efac" : "#fca5a5" }}>
-              {apiReady ? "API réunions prête" : "API réunions à finaliser"}
-            </div>
-          </div>
-        </aside>
-
-        <main style={{ padding: "28px" }}>
+    <div style={{ maxWidth: "1280px", margin: "0 auto", color: "white" }}>
+      {!apiReady && (
+        <div style={{
+          marginBottom: "18px",
+          padding: "14px 20px",
+          borderRadius: "16px",
+          background: "rgba(239,68,68,0.12)",
+          border: "1px solid rgba(239,68,68,0.3)",
+          color: "#fca5a5",
+          fontSize: "14px",
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+        }}>
+          <AlertTriangle size={16} />
+          <span>
+            Base de données inaccessible. Rendez-vous sur{" "}
+            <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer"
+              style={{ color: "#f87171", textDecoration: "underline" }}>
+              Supabase Dashboard
+            </a>{" "}
+            pour réactiver votre projet, puis rechargez la page.
+          </span>
+        </div>
+      )}
+      <div>
           <div
             style={{
               display: "flex",
@@ -646,10 +602,15 @@ export default function MeetingsPage() {
               </div>
             </section>
           </div>
-        </main>
       </div>
     </div>
   );
 }
 
-
+export default function MeetingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <MeetingsPageInner />
+    </Suspense>
+  );
+}
