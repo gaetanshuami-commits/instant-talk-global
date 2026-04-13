@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     const subjectName = company ? company : name
 
     const { data, error } = await resend.emails.send({
-      from: "Instant Talk <" + fromAddress + ">",
+      from: "Instant Talk <contact@instant-talk.com>",
       to: [toAddress],
       replyTo: email,
       subject: "[Contact] " + subjectName + " - Instant Talk",
