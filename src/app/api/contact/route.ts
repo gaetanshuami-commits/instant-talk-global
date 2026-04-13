@@ -17,10 +17,10 @@ export async function POST(request: Request) {
     // from: use Resend's verified sender (works without custom domain verification).
     // replyTo: set to the visitor's email so replies go directly to them.
     // to: your inbox — swap for your real address once instant-talk.com DNS is verified.
-    const toAddress = process.env.CONTACT_EMAIL ?? "gaeta@instant-talk.com"
+    const toAddress = process.env.CONTACT_TO_EMAIL ?? "gaeta@instant-talk.com"
 
     const { data, error } = await resend.emails.send({
-      from:    "Instant Talk <onboarding@resend.dev>",
+      from:    "Instant Talk <contact@instant-talk.com>",
       to:      [toAddress],
       replyTo: email,
       subject: `[Contact] ${company || name} — Instant Talk`,
