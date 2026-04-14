@@ -94,6 +94,12 @@ let _restartTimer: ReturnType<typeof setTimeout> | null = null  // auto-restart 
 let activeSynth: any      = null
 let activeSynthDone: (() => void) | null = null
 
+// Cached Azure SpeechSynthesizer — reuse the WebSocket between consecutive TTS
+// calls instead of creating a new connection each time (saves 200-500ms per call).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _azureSynth: any = null
+let _azureSynthVoice = ""
+
 // ─── Web Speech API fallback state ───────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _wsr: any = null               // SpeechRecognition instance (browser fallback)
@@ -144,21 +150,31 @@ async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
 }
 
 // ─── Azure TTS ────────────────────────────────────────────────────────────────
+// Reuses the SpeechSynthesizer WebSocket connection between calls to avoid the
+// 200-500 ms handshake overhead on every utterance.  The synthesizer is only
+// recreated when the voice changes or an error forces a reset.
 
 async function speakWithAzure(
   text: string,
   lang: string,
   voiceMap: Record<string, string>
 ): Promise<void> {
-  cancelActiveSynth()
   const sdk   = _sdk!
   const voice = voiceMap[lang] ?? "en-US-AriaNeural"
-  const cfg   = sdk.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion)
-  cfg.speechSynthesisVoiceName = voice
-  const synth = new sdk.SpeechSynthesizer(
-    cfg,
-    null as unknown as InstanceType<typeof sdk.AudioConfig>
-  )
+
+  // Reuse cached synthesizer if voice hasn't changed; otherwise recreate.
+  if (!_azureSynth || _azureSynthVoice !== voice) {
+    if (_azureSynth) { try { _azureSynth.close() } catch {} }
+    const cfg = sdk.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion)
+    cfg.speechSynthesisVoiceName = voice
+    _azureSynth = new sdk.SpeechSynthesizer(
+      cfg,
+      null as unknown as InstanceType<typeof sdk.AudioConfig>
+    )
+    _azureSynthVoice = voice
+  }
+
+  const synth = _azureSynth
   activeSynth = synth
   await new Promise<void>((resolve) => {
     activeSynthDone = resolve
@@ -166,13 +182,17 @@ async function speakWithAzure(
       text,
       async (result: { audioData?: ArrayBuffer }) => {
         if (activeSynth !== synth) { resolve(); return }
-        activeSynth = null; activeSynthDone = null; synth.close()
+        activeSynth = null; activeSynthDone = null
+        // Do NOT close the synthesizer — keep WebSocket alive for next call.
         if (result.audioData && result.audioData.byteLength > 0) void scheduleAudio(result.audioData)
         resolve()
       },
       (_err: unknown) => {
+        // Error: reset the cached synth so the next call reconnects cleanly.
         if (activeSynth === synth) { activeSynth = null; activeSynthDone = null }
-        synth.close(); resolve()
+        try { synth.close() } catch {}
+        if (_azureSynth === synth) { _azureSynth = null; _azureSynthVoice = "" }
+        resolve()
       }
     )
   })
@@ -199,6 +219,16 @@ export async function warmupSDK(): Promise<void> {
     await ensureToken()
   } catch {
     // Non-fatal — retried in startTranslation if needed
+  }
+}
+
+/** Pre-resume the AudioContext so the first TTS playback has no suspend delay. */
+export async function warmAudioContext(): Promise<void> {
+  try {
+    if (!ttsCtx) getTTSMediaStream()
+    if (ttsCtx && ttsCtx.state === "suspended") await ttsCtx.resume()
+  } catch {
+    // Non-fatal
   }
 }
 
@@ -238,6 +268,11 @@ async function startWebSpeechFallback(
     wsr.maxAlternatives = 1
     _wsr = wsr
 
+    // Track the highest final-result index we've already processed to avoid
+    // re-emitting the same translation when the Web Speech API fires onresult
+    // with accumulated results (the API never removes finalized entries).
+    let lastProcessedFinalIdx = -1
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onresult = async (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -246,6 +281,10 @@ async function startWebSpeechFallback(
         if (!transcript) continue
 
         if (result.isFinal) {
+          // Skip results we've already translated to prevent duplicate subtitles
+          if (i <= lastProcessedFinalIdx) continue
+          lastProcessedFinalIdx = i
+
           // Translate each target language via REST (Azure Translator / DeepL)
           for (const lang of targets) {
             try {
@@ -342,8 +381,10 @@ export async function startTranslation(
   speechConfig.speechRecognitionLanguage = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
 
   // ── Latency ────────────────────────────────────────────────────────────────
+  // 150 ms end-silence: fires ~50 ms earlier than the previous 200 ms value
+  // while still being long enough to avoid premature sentence cuts in natural speech.
   speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "200"
+    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "150"
   )
   speechConfig.setProperty(
     sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "30000"
@@ -456,6 +497,13 @@ export async function startTranslation(
 export async function stopTranslation(): Promise<void> {
   cancelActiveSynth()
 
+  // Release cached Azure TTS synthesizer to free the WebSocket connection.
+  if (_azureSynth) {
+    try { _azureSynth.close() } catch {}
+    _azureSynth = null
+    _azureSynthVoice = ""
+  }
+
   // Cancel any pending auto-restart
   if (_restartTimer) { clearTimeout(_restartTimer); _restartTimer = null }
 
@@ -492,7 +540,11 @@ function cancelActiveSynth(): void {
   const synth = activeSynth
   activeSynth     = null
   activeSynthDone = null
-  if (synth) try { synth.close() } catch {}
+  if (synth) {
+    try { synth.close() } catch {}
+    // Clear the cache — the synthesizer is now closed; next call will reconnect.
+    if (_azureSynth === synth) { _azureSynth = null; _azureSynthVoice = "" }
+  }
   done?.()
 }
 

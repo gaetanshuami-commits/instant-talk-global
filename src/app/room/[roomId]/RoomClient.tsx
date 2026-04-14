@@ -29,8 +29,6 @@ async function getVE(): Promise<VoiceEngineModule> {
   return _ve
 }
 
-type Subtitle = { lang: string; text: string; final: boolean }
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RoomClient({ roomId }: { roomId: string }) {
@@ -52,6 +50,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const [ttsProvider,     setTtsProvider]       = useState<"elevenlabs" | "azure">("elevenlabs")
   const [transcript,      setTranscript]        = useState<string[]>([])
   const [cloneStatus, setCloneStatus]           = useState<"idle"|"recording"|"cloning"|"ready"|"error">("idle")
+  const [translationError, setTranslationError] = useState<string | null>(null)
   const screenTrackRef   = useRef<ILocalVideoTrack | null>(null)
   const cloneVoiceIdRef  = useRef<string | null>(null)
   const cloneRecorderRef = useRef<MediaRecorder | null>(null)
@@ -657,7 +656,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     src: string, tgt: string, gender: VoiceGender
   ) => {
     const ve = await getVE()
+    // Pre-resume AudioContext so first TTS plays without the suspended-context delay.
+    void ve.warmAudioContext()
     await publishInterpreter()
+    setTranslationError(null)
     await ve.startTranslation(
       src, [tgt],
       {
@@ -665,12 +667,19 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         onFinal:   (lang, text) => showSubtitle(lang, text, true),
         onError:   (err) => {
           console.error("[VoiceEngine]", err)
-          // Stop translation on auth/quota failures that can't self-recover.
-          // Transient errors auto-restart in voiceEngine — only fatal errors stop the UI.
-          const isFatal = /authentication error|authentication failed|auth:|401|403|unauthorized|quota exceeded/i.test(err)
-          if (isFatal) {
+          // Auth errors are fatal and must be surfaced to the user.
+          // Quota-exceeded errors are handled transparently by the Web Speech API
+          // fallback inside voiceEngine — only surface them if the fallback also fails.
+          const isAuthFatal = /authentication error|authentication failed|auth:|401|403|unauthorized/i.test(err)
+          const isQuotaFinal = /quota exceeded.*chrome not available|browser stt.*not available/i.test(err)
+          if (isAuthFatal || isQuotaFinal) {
             setIsTranslating(false)
             subtitleRef.current?.reset()
+            setTranslationError(
+              isAuthFatal
+                ? "Erreur d'authentification Azure. Vérifiez vos clés API."
+                : "Quota Azure dépassé et navigateur STT indisponible. Réessayez avec Chrome."
+            )
           }
         },
       },
@@ -687,14 +696,17 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       const ve = await getVE()
       await ve.stopTranslation()
       setIsTranslating(false)
+      setTranslationError(null)
       subtitleRef.current?.reset()
       return
     }
     try {
+      setTranslationError(null)
       await startTrans(sourceLang, targetLang, voiceGender)
       setIsTranslating(true)
     } catch (err) {
       console.error("[Translation start]", err)
+      setTranslationError("Impossible de démarrer la traduction. Vérifiez le micro et les clés Azure.")
     }
   }, [isTranslating, sourceLang, targetLang, voiceGender, startTrans])
 
@@ -808,71 +820,112 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       </main>
 
       {/* ── Control Bar ────────────────────────────────────────────────────── */}
-      <footer className="shrink-0" style={{ background: "rgba(6,6,10,0.98)", borderTop: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+      <footer className="shrink-0 select-none" style={{ background: "rgba(6,6,10,0.98)", borderTop: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+
+        {/* Translation error banner */}
+        {translationError && (
+          <div className="flex items-center justify-between gap-2 px-4 py-1.5 bg-red-900/60 text-red-200 text-xs font-medium">
+            <span>⚠ {translationError}</span>
+            <button onClick={() => setTranslationError(null)} className="text-red-300 hover:text-white shrink-0">✕</button>
+          </div>
+        )}
 
         {/* Room ID micro-label */}
-        <div className="text-center pt-1.5" style={{ fontSize: "9px", letterSpacing: "0.18em", opacity: 0.18, fontWeight: 600, textTransform: "uppercase", userSelect: "none" }}>
+        <div className="text-center pt-1" style={{ fontSize: "9px", letterSpacing: "0.18em", opacity: 0.18, fontWeight: 600, textTransform: "uppercase" }}>
           {roomId}
         </div>
 
-        {/* Three-column toolbar */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "8px 20px 12px", gap: "12px" }}>
+        {/* ── MOBILE layout (< sm): stacked rows ─────────────────────────── */}
+        <div className="flex sm:hidden flex-col gap-1 px-3 py-2">
+
+          {/* Row 1: Translation controls — centered, full width */}
+          <div className="flex items-center justify-center gap-2 rounded-2xl py-1.5 px-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <LanguageSelector title="Je parle"   value={sourceLang}  onChange={setSourceLang} compact />
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 12, height: 12, opacity: 0.3, flexShrink: 0 }}><path strokeLinecap="round" d="M2 8h12M10 4l4 4-4 4"/></svg>
+            <LanguageSelector title="Traduit en" value={targetLang}  onChange={setTargetLang} compact />
+            <VoiceSelector value={voiceGender} onChange={setVoiceGender} />
+            <button
+              onClick={toggleTranslation}
+              style={{
+                height: 32, padding: "0 12px", borderRadius: "10px", border: 0,
+                background: isTranslating
+                  ? "linear-gradient(135deg, #2563eb, #1d4ed8)"
+                  : "linear-gradient(135deg, #6366f1, #7c3aed)",
+                color: "white", fontWeight: 700, fontSize: "12px",
+                cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                boxShadow: isTranslating ? "0 3px 10px rgba(37,99,235,0.45)" : "0 3px 10px rgba(99,102,241,0.45)",
+              }}
+            >
+              {isTranslating ? "Stop" : "Traduire"}
+            </button>
+          </div>
+
+          {/* Row 2: Media controls + secondary tools */}
+          <div className="flex items-center justify-between gap-1">
+            {/* Left cluster: essential media controls */}
+            <div className="flex gap-1">
+              <CtrlBtn label={isMicOn ? "Micro" : "Micro off"} active={!isMicOn} activeColor="#dc2626"
+                onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }}
+                icon={isMicOn
+                  ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
+                  : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>}
+              />
+              <CtrlBtn label={isCamOn ? "Camera" : "Camera off"} active={!isCamOn} activeColor="#dc2626"
+                onClick={async () => { if (!tracksRef.current) return; const n = !isCamOn; await tracksRef.current.video.setEnabled(n); setIsCamOn(n) }}
+                icon={isCamOn
+                  ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M3.5 7A1.5 1.5 0 002 8.5v5A1.5 1.5 0 003.5 15h8A1.5 1.5 0 0013 13.5v-1.3l2.15 1.43A.75.75 0 0016.5 13V9a.75.75 0 00-1.35-.45L13 9.9V8.5A1.5 1.5 0 0011.5 7h-8z"/></svg>
+                  : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, color: "#fca5a5" }}><path fillRule="evenodd" d="M4.28 3.22a.75.75 0 00-1.06 1.06l.19.19C3.15 4.7 3 5.09 3 5.5v7A2.5 2.5 0 005.5 15h7c.41 0 .8-.15 1.09-.41l1.12 1.12a.75.75 0 101.06-1.06L4.28 3.22zm3.53 8.66l5.79 5.79A2.5 2.5 0 0015 14.5v-7c0-.5-.19-.97-.5-1.32l-6.69 6.7z" clipRule="evenodd"/></svg>}
+              />
+              <CtrlBtn label={isScreenSharing ? "Écran ON" : "Écran"} active={isScreenSharing} activeColor="#0891b2"
+                onClick={() => void toggleScreenShare()}
+                icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path fillRule="evenodd" d="M2 4.25A2.25 2.25 0 014.25 2h11.5A2.25 2.25 0 0118 4.25v8.5A2.25 2.25 0 0115.75 15h-3.105a3.501 3.501 0 001.1 1.677A.75.75 0 0113.26 18H6.74a.75.75 0 01-.484-1.323A3.501 3.501 0 007.355 15H4.25A2.25 2.25 0 012 12.75v-8.5zm1.5 0v7.5c0 .414.336.75.75.75h11.5a.75.75 0 00.75-.75v-7.5a.75.75 0 00-.75-.75H4.25a.75.75 0 00-.75.75z" clipRule="evenodd"/></svg>}
+              />
+            </div>
+
+            {/* Right cluster: tools + quit */}
+            <div className="flex gap-1 items-center">
+              <CtrlBtn label="IA" active={showAICompanion} activeColor="#4f46e5"
+                onClick={() => setShowAICompanion(!showAICompanion)}
+                icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z"/></svg>}
+              />
+              <button
+                onClick={() => { void cleanup(); window.location.href = "/" }}
+                style={{ height: 34, padding: "0 12px", borderRadius: "9px", border: "1px solid rgba(220,38,38,0.3)", background: "rgba(220,38,38,0.18)", color: "#fca5a5", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}
+              >
+                Quitter
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── DESKTOP layout (≥ sm): three-column row ─────────────────────── */}
+        <div className="hidden sm:grid" style={{ gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "8px 20px 12px", gap: "12px" }}>
 
           {/* LEFT — Media controls */}
           <div style={{ display: "flex", gap: "6px", justifyContent: "flex-start" }}>
             <CtrlBtn
-              label={isMicOn ? "Micro" : "Micro off"}
-              active={!isMicOn}
-              activeColor="#dc2626"
-              onClick={async () => {
-                if (!tracksRef.current) return
-                const next = !isMicOn
-                await tracksRef.current.audio.setEnabled(next)
-                setIsMicOn(next)
-              }}
-              icon={
-                isMicOn
-                  ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
-                  : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>
-              }
+              label={isMicOn ? "Micro" : "Micro off"} active={!isMicOn} activeColor="#dc2626"
+              onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }}
+              icon={isMicOn
+                ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
+                : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>}
             />
             <CtrlBtn
-              label={isCamOn ? "Camera" : "Camera off"}
-              active={!isCamOn}
-              activeColor="#dc2626"
-              onClick={async () => {
-                if (!tracksRef.current) return
-                const next = !isCamOn
-                await tracksRef.current.video.setEnabled(next)
-                setIsCamOn(next)
-              }}
-              icon={
-                isCamOn
-                  ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M3.5 7A1.5 1.5 0 002 8.5v5A1.5 1.5 0 003.5 15h8A1.5 1.5 0 0013 13.5v-1.3l2.15 1.43A.75.75 0 0016.5 13V9a.75.75 0 00-1.35-.45L13 9.9V8.5A1.5 1.5 0 0011.5 7h-8z"/></svg>
-                  : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path fillRule="evenodd" d="M4.28 3.22a.75.75 0 00-1.06 1.06l.19.19C3.15 4.7 3 5.09 3 5.5v7A2.5 2.5 0 005.5 15h7c.41 0 .8-.15 1.09-.41l1.12 1.12a.75.75 0 101.06-1.06L4.28 3.22zm3.53 8.66l5.79 5.79A2.5 2.5 0 0015 14.5v-7c0-.5-.19-.97-.5-1.32l-6.69 6.7z" clipRule="evenodd"/></svg>
-              }
+              label={isCamOn ? "Camera" : "Camera off"} active={!isCamOn} activeColor="#dc2626"
+              onClick={async () => { if (!tracksRef.current) return; const n = !isCamOn; await tracksRef.current.video.setEnabled(n); setIsCamOn(n) }}
+              icon={isCamOn
+                ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M3.5 7A1.5 1.5 0 002 8.5v5A1.5 1.5 0 003.5 15h8A1.5 1.5 0 0013 13.5v-1.3l2.15 1.43A.75.75 0 0016.5 13V9a.75.75 0 00-1.35-.45L13 9.9V8.5A1.5 1.5 0 0011.5 7h-8z"/></svg>
+                : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path fillRule="evenodd" d="M4.28 3.22a.75.75 0 00-1.06 1.06l.19.19C3.15 4.7 3 5.09 3 5.5v7A2.5 2.5 0 005.5 15h7c.41 0 .8-.15 1.09-.41l1.12 1.12a.75.75 0 101.06-1.06L4.28 3.22zm3.53 8.66l5.79 5.79A2.5 2.5 0 0015 14.5v-7c0-.5-.19-.97-.5-1.32l-6.69 6.7z" clipRule="evenodd"/></svg>}
             />
             <CtrlBtn
-              label={isScreenSharing ? "Partage actif" : "Ecran"}
-              active={isScreenSharing}
-              activeColor="#0891b2"
+              label={isScreenSharing ? "Partage actif" : "Ecran"} active={isScreenSharing} activeColor="#0891b2"
               onClick={() => void toggleScreenShare()}
-              icon={
-                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
-                  <path fillRule="evenodd" d="M2 4.25A2.25 2.25 0 014.25 2h11.5A2.25 2.25 0 0118 4.25v8.5A2.25 2.25 0 0115.75 15h-3.105a3.501 3.501 0 001.1 1.677A.75.75 0 0113.26 18H6.74a.75.75 0 01-.484-1.323A3.501 3.501 0 007.355 15H4.25A2.25 2.25 0 012 12.75v-8.5zm1.5 0v7.5c0 .414.336.75.75.75h11.5a.75.75 0 00.75-.75v-7.5a.75.75 0 00-.75-.75H4.25a.75.75 0 00-.75.75z" clipRule="evenodd" />
-                </svg>
-              }
+              icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path fillRule="evenodd" d="M2 4.25A2.25 2.25 0 014.25 2h11.5A2.25 2.25 0 0118 4.25v8.5A2.25 2.25 0 0115.75 15h-3.105a3.501 3.501 0 001.1 1.677A.75.75 0 0113.26 18H6.74a.75.75 0 01-.484-1.323A3.501 3.501 0 007.355 15H4.25A2.25 2.25 0 012 12.75v-8.5zm1.5 0v7.5c0 .414.336.75.75.75h11.5a.75.75 0 00.75-.75v-7.5a.75.75 0 00-.75-.75H4.25a.75.75 0 00-.75.75z" clipRule="evenodd"/></svg>}
             />
             <CtrlBtn
-              label={isANS ? "Filtre ON" : "Filtre bruit"}
-              active={isANS}
-              activeColor="#15803d"
+              label={isANS ? "Filtre ON" : "Filtre bruit"} active={isANS} activeColor="#15803d"
               onClick={() => void toggleANS()}
-              icon={
-                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
-                  <path d="M10.5 3.75a.75.75 0 00-1.5 0v1.5a.75.75 0 001.5 0v-1.5zM14.78 5.72a.75.75 0 00-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zm1.47 3.53a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm-3.78 5.06a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 00-1.06 1.06l1.06 1.06zm-6.5-1.06a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06l-1.06-1.06zM4.75 10a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm1.47-5.28a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06L6.22 4.72zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" />
-                </svg>
-              }
+              icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M10.5 3.75a.75.75 0 00-1.5 0v1.5a.75.75 0 001.5 0v-1.5zM14.78 5.72a.75.75 0 00-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zm1.47 3.53a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm-3.78 5.06a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 00-1.06 1.06l1.06 1.06zm-6.5-1.06a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06l-1.06-1.06zM4.75 10a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm1.47-5.28a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06L6.22 4.72zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/></svg>}
             />
           </div>
 
@@ -901,46 +954,23 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
           {/* RIGHT — Tools + Leave */}
           <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", alignItems: "center" }}>
-            {/* Voice quality toggle */}
             <CtrlBtn
-              label={ttsProvider === "elevenlabs" ? "Voix HD" : "Voix Standard"}
-              active={ttsProvider === "elevenlabs"}
-              activeColor="#ec4899"
+              label={ttsProvider === "elevenlabs" ? "Voix HD" : "Voix Std"}
+              active={ttsProvider === "elevenlabs"} activeColor="#ec4899"
               onClick={() => void toggleTTSProvider()}
-              icon={
-                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
-                  <path d="M9.653 16.915l-.005-.003-.019-.01a20.759 20.759 0 01-1.162-.682 22.045 22.045 0 01-2.582-2.09c-1.29-1.329-2.258-2.956-2.258-4.88C3.627 6.68 5.348 5 7.5 5c1.139 0 2.16.543 2.836 1.388 1.155-.953 2.7-1.492 4.086-.777.93.483 1.578 1.373 1.578 2.389 0 2.3-2.67 4.26-4.346 5.915z"/>
-                </svg>
-              }
+              icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M9.653 16.915l-.005-.003-.019-.01a20.759 20.759 0 01-1.162-.682 22.045 22.045 0 01-2.582-2.09c-1.29-1.329-2.258-2.956-2.258-4.88C3.627 6.68 5.348 5 7.5 5c1.139 0 2.16.543 2.836 1.388 1.155-.953 2.7-1.492 4.086-.777.93.483 1.578 1.373 1.578 2.389 0 2.3-2.67 4.26-4.346 5.915z"/></svg>}
             />
             <CtrlBtn
-              label="Board"
-              active={showWhiteboard}
-              activeColor="#7c3aed"
+              label="Board" active={showWhiteboard} activeColor="#7c3aed"
               onClick={() => setShowWhiteboard(!showWhiteboard)}
-              icon={
-                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
-                  <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2H4zm0 2h12v8H4V7z" clipRule="evenodd" />
-                  <path d="M7 9.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5z" />
-                </svg>
-              }
+              icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2H4zm0 2h12v8H4V7z" clipRule="evenodd"/><path d="M7 9.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5z"/></svg>}
             />
             <CtrlBtn
-              label="IA"
-              active={showAICompanion}
-              activeColor="#4f46e5"
+              label="IA" active={showAICompanion} activeColor="#4f46e5"
               onClick={() => setShowAICompanion(!showAICompanion)}
-              icon={
-                <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}>
-                  <path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z" />
-                </svg>
-              }
+              icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z"/></svg>}
             />
-
-            {/* Divider */}
             <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.09)", margin: "0 4px" }} />
-
-            {/* Leave */}
             <button
               onClick={() => { void cleanup(); window.location.href = "/" }}
               style={{ height: 38, padding: "0 16px", borderRadius: "11px", border: "1px solid rgba(220,38,38,0.25)", background: "rgba(220,38,38,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: "13px", cursor: "pointer", transition: "background 0.15s", whiteSpace: "nowrap" }}
@@ -959,6 +989,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
 // ─── Subtitle overlay — isolated component so subtitle state changes never ────
 // re-render the parent RoomClient (and thus never stall the video grid).
+// Uses direct DOM manipulation (no React state) to eliminate any re-render
+// flash between partial and final subtitles.
 type SubtitleOverlayHandle = {
   show: (lang: string, text: string, final: boolean) => void
   reset: () => void
@@ -966,30 +998,61 @@ type SubtitleOverlayHandle = {
 
 const SubtitleOverlay = forwardRef<SubtitleOverlayHandle, object>(
   function SubtitleOverlay(_, ref) {
-    const [subtitle, setSub] = useState<Subtitle | null>(null)
-    const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const wrapRef  = useRef<HTMLDivElement | null>(null)
+    const boxRef   = useRef<HTMLDivElement | null>(null)
+    const textRef  = useRef<HTMLSpanElement | null>(null)
+    const timer    = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const lastText = useRef("")
 
     useImperativeHandle(ref, () => ({
       show(lang, text, final) {
-        setSub({ lang, text, final })
-        if (timer.current) clearTimeout(timer.current)
-        if (final) timer.current = setTimeout(() => setSub(null), 5000)
+        if (!wrapRef.current || !boxRef.current || !textRef.current) return
+
+        // Clear the auto-hide timer unconditionally.
+        if (timer.current) { clearTimeout(timer.current); timer.current = null }
+
+        // Update text only when it actually changed — avoids the visual "doublon"
+        // that occurs when Azure fires recognizing+recognized with identical text.
+        if (text !== lastText.current) {
+          textRef.current.textContent = text
+          lastText.current = text
+        }
+
+        // Apply style: final = solid white, partial = muted italic
+        if (final) {
+          boxRef.current.className =
+            "inline-block px-5 py-2.5 rounded-2xl font-semibold backdrop-blur-md shadow-xl bg-black/85 text-white text-[15px] leading-snug"
+        } else {
+          boxRef.current.className =
+            "inline-block px-5 py-2 rounded-2xl font-normal backdrop-blur-md shadow-lg bg-black/55 text-white/70 text-sm italic leading-snug"
+        }
+
+        // Show the overlay
+        wrapRef.current.style.display = "block"
+
+        // Auto-hide 5 s after a final result; partials stay until replaced.
+        if (final) {
+          timer.current = setTimeout(() => {
+            if (wrapRef.current) wrapRef.current.style.display = "none"
+            lastText.current = ""
+          }, 5000)
+        }
       },
       reset() {
-        if (timer.current) clearTimeout(timer.current)
-        setSub(null)
+        if (timer.current) { clearTimeout(timer.current); timer.current = null }
+        if (wrapRef.current) wrapRef.current.style.display = "none"
+        lastText.current = ""
       },
     }), [])
 
-    if (!subtitle) return null
     return (
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[75%] text-center pointer-events-none z-20">
-        <div className={`inline-block px-5 py-2.5 rounded-2xl font-medium backdrop-blur-md shadow-xl transition-all duration-100 ${
-          subtitle.final
-            ? "bg-black/80 text-white text-base"
-            : "bg-black/50 text-white/65 italic text-sm"
-        }`}>
-          {subtitle.text}
+      <div
+        ref={wrapRef}
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[80%] text-center pointer-events-none z-20"
+        style={{ display: "none" }}
+      >
+        <div ref={boxRef}>
+          <span ref={textRef} />
         </div>
       </div>
     )
@@ -998,13 +1061,14 @@ const SubtitleOverlay = forwardRef<SubtitleOverlayHandle, object>(
 
 // ─── Shared control button ────────────────────────────────────────────────────
 function CtrlBtn({
-  label, icon, active, activeColor, onClick,
+  label, icon, active, activeColor, onClick, small,
 }: {
   label: string
   icon: React.ReactNode
   active?: boolean
   activeColor?: string
   onClick: () => void
+  small?: boolean
 }) {
   return (
     <button
@@ -1012,11 +1076,14 @@ function CtrlBtn({
       title={label}
       style={{
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: "4px", padding: "6px 10px", borderRadius: "12px", border: "1px solid",
+        gap: small ? "2px" : "4px",
+        padding: small ? "5px 8px" : "6px 10px",
+        borderRadius: "12px", border: "1px solid",
         borderColor: active ? (activeColor ?? "#6366f1") + "55" : "rgba(255,255,255,0.07)",
         background: active ? (activeColor ?? "#6366f1") + "22" : "rgba(255,255,255,0.04)",
         color: active ? "white" : "rgba(255,255,255,0.65)",
-        cursor: "pointer", transition: "all 0.15s", minWidth: "52px",
+        cursor: "pointer", transition: "all 0.15s",
+        minWidth: small ? "40px" : "52px",
       }}
       onMouseEnter={e => {
         if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)"
@@ -1026,7 +1093,7 @@ function CtrlBtn({
       }}
     >
       {icon}
-      <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.02em", textTransform: "none", whiteSpace: "nowrap", opacity: active ? 1 : 0.6 }}>
+      <span style={{ fontSize: small ? "8.5px" : "9.5px", fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", opacity: active ? 1 : 0.6 }}>
         {label}
       </span>
     </button>
