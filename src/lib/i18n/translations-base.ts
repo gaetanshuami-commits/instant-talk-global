@@ -696,6 +696,6 @@ export const mergeDeep = (
 };
 
 
-export type LanguageCode = "fr" | "en" | "es" | "de" | "it" | "pt" | "nl" | "zh" | "ja" | "ar" | "ko" | "hi" | "tr" | "ru" | "pl" | "sv" | "el" | "cs" | "ro" | "hu" | "sw" | "th" | "vi";
+export type LanguageCode = "fr" | "en" | "es" | "de" | "it" | "pt" | "nl" | "zh" | "ja" | "ar" | "ko" | "hi" | "tr" | "ru" | "pl" | "sv" | "el" | "cs" | "ro" | "hu" | "sw" | "th" | "vi" | "bg" | "da" | "fi" | "sk" | "no";
 
 export type TranslationShape = typeof fr;

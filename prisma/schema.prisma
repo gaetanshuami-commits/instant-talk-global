@@ -22,6 +22,7 @@ model Subscription {
 
   @@index([plan])
   @@index([status])
+  @@index([customerEmail])
 }
 
 // Tracks active participants per room channel.

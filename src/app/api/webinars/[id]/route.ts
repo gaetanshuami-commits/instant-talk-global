@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
 
+type WebinarModel = {
+  updateMany: (args: unknown) => Promise<{ count: number }>
+  deleteMany: (args: unknown) => Promise<unknown>
+}
+
 function ref(req: NextRequest) {
   return req.cookies.get("instanttalk_customer_ref")?.value || null
 }
@@ -10,7 +15,7 @@ function ref(req: NextRequest) {
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).webinar
+  const model = (prisma as unknown as { webinar?: WebinarModel }).webinar
   if (!model) return NextResponse.json({ error: "db_not_ready" }, { status: 503 })
   const { id } = await params
   const body = await req.json()
@@ -25,7 +30,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).webinar
+  const model = (prisma as unknown as { webinar?: WebinarModel }).webinar
   if (!model) return NextResponse.json({ error: "db_not_ready" }, { status: 503 })
   const { id } = await params
   try {

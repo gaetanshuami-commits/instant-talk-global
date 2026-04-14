@@ -3,8 +3,8 @@
   subject: string;
   html: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.MEETINGS_FROM_EMAIL;
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.MEETINGS_FROM_EMAIL?.trim();
 
   if (!apiKey || !from) {
     return { sent: false, reason: "missing_email_provider_config" as const };

@@ -7,7 +7,41 @@ import {
   meetingStatusFromDates,
 } from "@/lib/meetings";
 
-function serializeMeeting(origin: string, meeting: any) {
+type InviteeRecord = {
+  id: string
+  email: string
+  status: string
+}
+
+type ReminderRecord = {
+  id: string
+  remindAt: Date | string
+  sentAt?: Date | string | null
+}
+
+type MeetingRecord = {
+  id: string
+  title: string
+  description?: string | null
+  hostEmail: string
+  roomId: string
+  inviteToken: string
+  startsAt: Date | string
+  endsAt: Date | string
+  timezone: string
+  status: string
+  createdAt: Date | string
+  updatedAt: Date | string
+  invitees?: InviteeRecord[]
+  reminders?: ReminderRecord[]
+}
+
+type MeetingModel = {
+  findMany: (args: unknown) => Promise<MeetingRecord[]>
+  create: (args: unknown) => Promise<MeetingRecord>
+}
+
+function serializeMeeting(origin: string, meeting: MeetingRecord) {
   return {
     id: meeting.id,
     title: meeting.title,
@@ -27,7 +61,7 @@ function serializeMeeting(origin: string, meeting: any) {
 }
 
 export async function GET(req: NextRequest) {
-  const meetingModel = (prisma as any).meeting;
+  const meetingModel = (prisma as unknown as { meeting?: MeetingModel }).meeting;
 
   if (!meetingModel) {
     return NextResponse.json({ meetings: [], prismaReady: false });
@@ -45,7 +79,7 @@ export async function GET(req: NextRequest) {
     const origin = req.nextUrl.origin;
 
     return NextResponse.json({
-      meetings: meetings.map((meeting: any) => serializeMeeting(origin, meeting)),
+      meetings: meetings.map((meeting) => serializeMeeting(origin, meeting)),
       prismaReady: true,
     });
   } catch (err) {
@@ -56,7 +90,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const meetingModel = (prisma as any).meeting;
+  const meetingModel = (prisma as unknown as { meeting?: MeetingModel }).meeting;
 
   if (!meetingModel) {
     return NextResponse.json(

@@ -3,6 +3,25 @@ import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
 
+type WebinarRecord = {
+  id: string
+  customerRef: string
+  title: string
+  topic?: string | null
+  host: string
+  startsAt: Date | string
+  durationMins: number
+  maxAttendees: number
+  langs: string[]
+  color: string
+  roomId: string
+}
+
+type WebinarModel = {
+  findMany: (args: unknown) => Promise<WebinarRecord[]>
+  create: (args: unknown) => Promise<WebinarRecord>
+}
+
 function ref(req: NextRequest) {
   return req.cookies.get("instanttalk_customer_ref")?.value || null
 }
@@ -10,7 +29,7 @@ function ref(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).webinar
+  const model = (prisma as unknown as { webinar?: WebinarModel }).webinar
   if (!model) return NextResponse.json({ webinars: [] })
   try {
     const webinars = await model.findMany({ where: { customerRef }, orderBy: { startsAt: "asc" } })
@@ -21,7 +40,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).webinar
+  const model = (prisma as unknown as { webinar?: WebinarModel }).webinar
   if (!model) return NextResponse.json({ error: "db_not_ready" }, { status: 503 })
   const body = await req.json()
   const { title, topic, host, startsAt, durationMins, maxAttendees, langs, color } = body

@@ -3,8 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { buildMeetingLink } from "@/lib/meetings";
 import { sendMeetingInvitationEmail } from "@/lib/email";
 
+type InviteeRecord = { email: string }
+type ReminderRecord = {
+  id: string
+  meeting: {
+    title: string
+    roomId: string
+    inviteToken: string
+    startsAt: Date
+    invitees: InviteeRecord[]
+  }
+}
+type MeetingReminderModel = {
+  findMany: (args: unknown) => Promise<ReminderRecord[]>
+  update: (args: unknown) => Promise<unknown>
+}
+
 export async function POST(req: NextRequest) {
-  const db = prisma as any;
+  const db = prisma as unknown as { meetingReminder: MeetingReminderModel };
   const now = new Date();
 
   const reminders = await db.meetingReminder.findMany({

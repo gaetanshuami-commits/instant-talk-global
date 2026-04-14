@@ -4,9 +4,21 @@ import { buildMeetingLink } from "@/lib/meetings";
 import { sendMeetingInvitationEmail } from "@/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
+type InviteeRecord = { id: string; email: string }
+type MeetingRecord = {
+  id: string
+  title: string
+  roomId: string
+  inviteToken: string
+  startsAt: Date
+  endsAt: Date
+  invitees: InviteeRecord[]
+}
+type MeetingInviteModel = { update: (args: unknown) => Promise<unknown> }
+type MeetingModel = { findUnique: (args: unknown) => Promise<MeetingRecord | null> }
 
 export async function POST(req: NextRequest, ctx: Params) {
-  const db = prisma as any;
+  const db = prisma as unknown as { meeting: MeetingModel; meetingInvite: MeetingInviteModel };
   const { id } = await ctx.params;
 
   let meeting;

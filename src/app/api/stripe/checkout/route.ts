@@ -3,7 +3,7 @@ import Stripe from "stripe";
 
 export const runtime = "nodejs";
 
-const stripeKey = process.env.STRIPE_SECRET_KEY;
+const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripe = stripeKey
   ? new Stripe(stripeKey, { apiVersion: "2026-02-25.clover" })
   : null;
@@ -29,6 +29,10 @@ function isCheckoutPlan(value: string): value is CheckoutPlan {
 
 function createCustomerRef() {
   return `itr_${crypto.randomUUID()}`;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "unknown_error";
 }
 
 export async function POST(req: Request) {
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
       trial: withTrial,
     });
   } catch (error) {
-    console.error("STRIPE_CHECKOUT_ERROR", error);
+    console.error("STRIPE_CHECKOUT_ERROR", getErrorMessage(error));
     return NextResponse.json(
       {
         error: "Stripe checkout failed",

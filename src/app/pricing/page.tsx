@@ -110,10 +110,30 @@ export default function PricingPage() {
   const { t, lang } = useLanguage();
   const [annual, setAnnual] = useState(false);
   const [source, setSource] = useState<string | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
   useEffect(() => {
     setSource(new URLSearchParams(window.location.search).get("source"));
   }, []);
+
+  async function startCheckout(plan: "premium" | "business") {
+    setLoadingPlan(plan);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, trial: false }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.details || data?.error || "Stripe checkout failed");
+      }
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("[pricing checkout]", error instanceof Error ? error.message : "unknown_error");
+      setLoadingPlan(null);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#f6f9fc]">
@@ -234,18 +254,27 @@ export default function PricingPage() {
                   </div>
 
                   <div className="mt-6 flex flex-col gap-2.5">
-                    <Link
-                      href={href}
-                      className={`flex items-center justify-center rounded-2xl px-5 py-4 text-sm font-bold transition ${
-                        plan.featured
-                          ? "bg-violet-600 text-white hover:bg-violet-700 shadow-[0_8px_20px_-6px_rgba(99,91,255,0.5)]"
-                          : plan.key === "enterprise"
-                          ? "border-2 border-[#0a2540] text-[#0a2540] hover:bg-slate-50"
-                          : "bg-[#0a2540] text-white hover:bg-[#16324f]"
-                      }`}
-                    >
-                      {cta}
-                    </Link>
+                    {plan.key === "enterprise" ? (
+                      <Link
+                        href={href}
+                        className="flex items-center justify-center rounded-2xl border-2 border-[#0a2540] px-5 py-4 text-sm font-bold text-[#0a2540] transition hover:bg-slate-50"
+                      >
+                        {cta}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void startCheckout(plan.key as "premium" | "business")}
+                        disabled={loadingPlan === plan.key}
+                        className={`flex items-center justify-center rounded-2xl px-5 py-4 text-sm font-bold transition disabled:opacity-60 ${
+                          plan.featured
+                            ? "bg-violet-600 text-white hover:bg-violet-700 shadow-[0_8px_20px_-6px_rgba(99,91,255,0.5)]"
+                            : "bg-[#0a2540] text-white hover:bg-[#16324f]"
+                        }`}
+                      >
+                        {loadingPlan === plan.key ? "Redirection Stripe..." : cta}
+                      </button>
+                    )}
                     {plan.simulate && (
                       <Link
                         href={plan.simulate}

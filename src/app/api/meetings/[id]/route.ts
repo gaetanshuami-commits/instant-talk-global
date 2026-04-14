@@ -3,9 +3,23 @@ import { prisma } from "@/lib/prisma";
 import { meetingStatusFromDates } from "@/lib/meetings";
 
 type Params = { params: Promise<{ id: string }> };
+type MeetingStatusValue = ReturnType<typeof meetingStatusFromDates>;
+type MeetingRecord = {
+  id: string
+  title: string
+  description?: string | null
+  startsAt: Date
+  endsAt: Date
+  timezone: string
+}
+type MeetingModel = {
+  findUnique: (args: unknown) => Promise<MeetingRecord | null>
+  update: (args: unknown) => Promise<unknown>
+  delete: (args: unknown) => Promise<unknown>
+}
 
 export async function GET(_: NextRequest, ctx: Params) {
-  const db = prisma as any;
+  const db = prisma as unknown as { meeting: MeetingModel };
   const { id } = await ctx.params;
 
   try {
@@ -22,7 +36,7 @@ export async function GET(_: NextRequest, ctx: Params) {
 }
 
 export async function PATCH(req: NextRequest, ctx: Params) {
-  const db = prisma as any;
+  const db = prisma as unknown as { meeting: MeetingModel };
   const { id } = await ctx.params;
   const body = await req.json();
 
@@ -45,7 +59,7 @@ export async function PATCH(req: NextRequest, ctx: Params) {
         startsAt,
         endsAt,
         timezone: body.timezone ?? current.timezone,
-        status: meetingStatusFromDates(startsAt, endsAt) as any,
+        status: meetingStatusFromDates(startsAt, endsAt) as MeetingStatusValue,
       },
       include: { invitees: true, reminders: true },
     });
@@ -57,7 +71,7 @@ export async function PATCH(req: NextRequest, ctx: Params) {
 }
 
 export async function DELETE(_: NextRequest, ctx: Params) {
-  const db = prisma as any;
+  const db = prisma as unknown as { meeting: MeetingModel };
   const { id } = await ctx.params;
 
   try {

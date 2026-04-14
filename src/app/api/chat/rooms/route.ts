@@ -3,6 +3,19 @@ import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
 
+type ChatRoomRecord = {
+  id: string
+  customerRef: string
+  name: string
+  emoji?: string | null
+  color: string
+}
+
+type ChatRoomModel = {
+  findMany: (args: unknown) => Promise<ChatRoomRecord[]>
+  create: (args: unknown) => Promise<ChatRoomRecord>
+}
+
 function ref(req: NextRequest) {
   return req.cookies.get("instanttalk_customer_ref")?.value || null
 }
@@ -10,7 +23,7 @@ function ref(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).chatRoom
+  const model = (prisma as unknown as { chatRoom?: ChatRoomModel }).chatRoom
   if (!model) return NextResponse.json({ rooms: [] })
   try {
     const rooms = await model.findMany({
@@ -25,7 +38,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).chatRoom
+  const model = (prisma as unknown as { chatRoom?: ChatRoomModel }).chatRoom
   if (!model) return NextResponse.json({ error: "db_not_ready" }, { status: 503 })
   const { name, emoji, color } = await req.json()
   if (!name) return NextResponse.json({ error: "name required" }, { status: 400 })

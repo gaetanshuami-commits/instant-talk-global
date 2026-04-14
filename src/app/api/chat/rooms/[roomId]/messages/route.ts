@@ -3,6 +3,29 @@ import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
 
+type ChatRoomRecord = {
+  id: string
+  customerRef: string
+}
+
+type ChatMessageRecord = {
+  id: string
+  roomId: string
+  author: string
+  text: string
+  lang?: string | null
+  mine: boolean
+}
+
+type ChatRoomModel = {
+  findFirst: (args: unknown) => Promise<ChatRoomRecord | null>
+}
+
+type ChatMessageModel = {
+  findMany: (args: unknown) => Promise<ChatMessageRecord[]>
+  create: (args: unknown) => Promise<ChatMessageRecord>
+}
+
 function ref(req: NextRequest) {
   return req.cookies.get("instanttalk_customer_ref")?.value || null
 }
@@ -10,8 +33,9 @@ function ref(req: NextRequest) {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const roomModel    = (prisma as any).chatRoom
-  const messageModel = (prisma as any).chatMessage
+  const db = prisma as unknown as { chatRoom?: ChatRoomModel; chatMessage?: ChatMessageModel }
+  const roomModel = db.chatRoom
+  const messageModel = db.chatMessage
   if (!roomModel || !messageModel) return NextResponse.json({ messages: [] })
   const { roomId } = await params
   try {
@@ -25,8 +49,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ room
 export async function POST(req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const roomModel    = (prisma as any).chatRoom
-  const messageModel = (prisma as any).chatMessage
+  const db = prisma as unknown as { chatRoom?: ChatRoomModel; chatMessage?: ChatMessageModel }
+  const roomModel = db.chatRoom
+  const messageModel = db.chatMessage
   if (!roomModel || !messageModel) return NextResponse.json({ error: "db_not_ready" }, { status: 503 })
   const { roomId } = await params
   try {

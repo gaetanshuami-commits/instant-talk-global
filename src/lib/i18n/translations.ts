@@ -6788,6 +6788,12 @@ const vi = {
   }
 };
 
+const bg = en;
+const da = en;
+const fi = en;
+const sk = en;
+const no = en;
+
 export const translations: Record<string, Record<string, unknown>> = {
   fr,
   en,
@@ -6812,6 +6818,11 @@ export const translations: Record<string, Record<string, unknown>> = {
   sw,
   th,
   vi,
+  bg,
+  da,
+  fi,
+  sk,
+  no,
 };
 
 // ── Type helpers ────────────────────────────────────────────────────────────

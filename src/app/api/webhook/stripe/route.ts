@@ -6,12 +6,16 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const stripeKey     = process.env.STRIPE_SECRET_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const stripeKey     = process.env.STRIPE_SECRET_KEY?.trim();
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
 
 const stripe = stripeKey
   ? new Stripe(stripeKey, { apiVersion: "2026-02-25.clover" })
   : null;
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "unknown_error";
+}
 
 function unixToDate(value: number | null | undefined): Date | null {
   return typeof value === "number" ? new Date(value * 1000) : null;
@@ -32,6 +36,25 @@ function normalizePlan(value: string | null | undefined) {
   return "premium";
 }
 
+async function resolveSessionSubscription(session: Stripe.Checkout.Session) {
+  const expandedSubscription = session.subscription as Stripe.Subscription | null;
+
+  if (expandedSubscription && typeof expandedSubscription === "object" && typeof expandedSubscription.id === "string") {
+    return expandedSubscription;
+  }
+
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : null;
+
+  if (!subscriptionId || !stripe) {
+    return null;
+  }
+
+  return stripe.subscriptions.retrieve(subscriptionId);
+}
+
 export async function POST(req: Request) {
   if (!stripe)        return new NextResponse("Stripe Secret Missing", { status: 500 });
   if (!webhookSecret) return new NextResponse("Webhook Secret Missing", { status: 400 });
@@ -48,18 +71,14 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        const subscriptionId =
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription?.id;
-
         const customerId =
           typeof session.customer === "string"
             ? session.customer
             : session.customer?.id;
 
-        if (session.mode === "subscription" && subscriptionId && customerId) {
-          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        if (session.mode === "subscription" && customerId) {
+          const sub = await resolveSessionSubscription(session);
+          if (!sub) break;
 
           await prisma.subscription.upsert({
             where: { stripeSubscriptionId: sub.id },
@@ -81,6 +100,7 @@ export async function POST(req: Request) {
               trialEndsAt: getTrialEnd(sub),
             },
           });
+          console.info("[STRIPE_WEBHOOK] checkout.session.completed synced", sub.id);
         }
         break;
       }
@@ -109,6 +129,7 @@ export async function POST(req: Request) {
             trialEndsAt: getTrialEnd(sub),
           },
         });
+        console.info("[STRIPE_WEBHOOK] subscription synced", sub.id, sub.status);
         break;
       }
 
@@ -136,12 +157,12 @@ export async function POST(req: Request) {
       }
 
       default:
-        console.log("STRIPE_EVENT_IGNORED", event.type);
+        console.info("STRIPE_EVENT_IGNORED", event.type);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("STRIPE_WEBHOOK_ERROR", error);
+    console.error("STRIPE_WEBHOOK_ERROR", getErrorMessage(error));
     return new NextResponse("Webhook Error", { status: 400 });
   }
 }

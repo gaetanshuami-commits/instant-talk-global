@@ -3,6 +3,15 @@ import { prisma } from "@/lib/prisma"
 
 export const runtime = "nodejs"
 
+type UserSettingsRow = {
+  data?: Record<string, unknown> | null
+}
+
+type UserSettingsModel = {
+  findUnique: (args: unknown) => Promise<UserSettingsRow | null>
+  upsert: (args: unknown) => Promise<unknown>
+}
+
 function ref(req: NextRequest) {
   return req.cookies.get("instanttalk_customer_ref")?.value || null
 }
@@ -10,7 +19,7 @@ function ref(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).userSettings
+  const model = (prisma as unknown as { userSettings?: UserSettingsModel }).userSettings
   if (!model) return NextResponse.json({ settings: {} })
   try {
     const row = await model.findUnique({ where: { customerRef } })
@@ -21,7 +30,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const customerRef = ref(req)
   if (!customerRef) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const model = (prisma as any).userSettings
+  const model = (prisma as unknown as { userSettings?: UserSettingsModel }).userSettings
   if (!model) return NextResponse.json({ error: "db_not_ready" }, { status: 503 })
   try {
     const patch = await req.json()
