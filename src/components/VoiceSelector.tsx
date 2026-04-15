@@ -5,10 +5,41 @@ import type { VoiceGender } from "@/core/voiceEngine"
 export default function VoiceSelector({
   value,
   onChange,
+  compact = false,
 }: {
   value: VoiceGender
   onChange: (v: VoiceGender) => void
+  compact?: boolean
 }) {
+  // Compact mode: single icon toggle (for mobile where space is tight)
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(value === "female" ? "male" : "female")}
+        title={value === "female" ? "Voix féminine — cliquer pour masculin" : "Voix masculine — cliquer pour féminin"}
+        style={{
+          height: 36,
+          width: 36,
+          borderRadius: "10px",
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: value === "female" ? "rgba(236,72,153,0.18)" : "rgba(59,130,246,0.18)",
+          color: value === "female" ? "#f9a8d4" : "#93c5fd",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          fontSize: "17px",
+          flexShrink: 0,
+          lineHeight: 1,
+        }}
+      >
+        {value === "female" ? "♀" : "♂"}
+      </button>
+    )
+  }
+
+  // Full mode: two labeled buttons
   return (
     <div style={{
       display: "flex",
@@ -44,7 +75,6 @@ export default function VoiceSelector({
           boxShadow: value === "female" ? "0 3px 10px rgba(236,72,153,0.4)" : "none",
         }}
       >
-        {/* Female icon */}
         <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 13, height: 13 }}>
           <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/>
         </svg>
@@ -76,7 +106,6 @@ export default function VoiceSelector({
           boxShadow: value === "male" ? "0 3px 10px rgba(59,130,246,0.4)" : "none",
         }}
       >
-        {/* Male icon */}
         <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 13, height: 13 }}>
           <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/>
         </svg>

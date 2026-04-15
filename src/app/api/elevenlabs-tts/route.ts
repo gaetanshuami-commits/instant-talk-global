@@ -16,7 +16,7 @@ const VOICE_MALE   = "TxGEqnHWrfWFTfGW9XjX"                                     
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, voiceId, gender } = await req.json()
+    const { text, voiceId, gender, lang } = await req.json()
 
     const cleanText = String(text ?? "").trim()
     if (!cleanText) {
@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedVoiceId = voiceId ?? (gender === "male" ? VOICE_MALE : VOICE_FEMALE)
+    // Explicit language_code improves accuracy and avoids auto-detection overhead.
+    // Only pass if it's a supported language (undefined = auto-detect for others).
+    const languageCode = lang && ELEVENLABS_SUPPORTED_LANGS.has(String(lang)) ? String(lang) : undefined
 
     // eleven_flash_v2_5: ElevenLabs' real-time model, ~75 ms generation latency
     // vs ~300-500 ms for eleven_multilingual_v2. Same voice IDs, same 32 languages
@@ -48,6 +51,9 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           text: cleanText,
           model_id: "eleven_flash_v2_5",
+          // Explicit language_code skips EL's auto-detection (~15ms saved per call).
+          // Omitted when undefined so EL falls back to auto-detect for edge cases.
+          ...(languageCode ? { language_code: languageCode } : {}),
           voice_settings: {
             stability:         0.45,
             similarity_boost:  0.80,

@@ -8,34 +8,34 @@ type LanguageOption = {
 }
 
 const LANGUAGES: LanguageOption[] = [
-  { label: "Anglais",           value: "en" },
-  { label: "Allemand",          value: "de" },
-  { label: "Français",          value: "fr" },
-  { label: "Italien",           value: "it" },
-  { label: "Espagnol",          value: "es" },
-  { label: "Russe",             value: "ru" },
-  { label: "Polonais",          value: "pl" },
-  { label: "Néerlandais",       value: "nl" },
-  { label: "Roumain",           value: "ro" },
-  { label: "Portugais",         value: "pt" },
-  { label: "Grec",              value: "el" },
-  { label: "Suédois",           value: "sv" },
-  { label: "Hongrois",          value: "hu" },
-  { label: "Tchèque",           value: "cs" },
-  { label: "Bulgare",           value: "bg" },
-  { label: "Danois",            value: "da" },
-  { label: "Finnois",           value: "fi" },
-  { label: "Slovaque",          value: "sk" },
-  { label: "Norvégien",         value: "no" },
-  { label: "Turc",              value: "tr" },
-  { label: "Coréen",            value: "ko" },
-  { label: "Japonais",          value: "ja" },
-  { label: "Arabe",             value: "ar" },
-  { label: "Mandarin",          value: "zh" },
-  { label: "Hindi",             value: "hi" },
-  { label: "Swahili",           value: "sw" },
-  { label: "Thaï",              value: "th" },
-  { label: "Vietnamien",        value: "vi" },
+  { label: "Anglais",     value: "en" },
+  { label: "Allemand",    value: "de" },
+  { label: "Français",    value: "fr" },
+  { label: "Italien",     value: "it" },
+  { label: "Espagnol",    value: "es" },
+  { label: "Russe",       value: "ru" },
+  { label: "Polonais",    value: "pl" },
+  { label: "Néerlandais", value: "nl" },
+  { label: "Roumain",     value: "ro" },
+  { label: "Portugais",   value: "pt" },
+  { label: "Grec",        value: "el" },
+  { label: "Suédois",     value: "sv" },
+  { label: "Hongrois",    value: "hu" },
+  { label: "Tchèque",     value: "cs" },
+  { label: "Bulgare",     value: "bg" },
+  { label: "Danois",      value: "da" },
+  { label: "Finnois",     value: "fi" },
+  { label: "Slovaque",    value: "sk" },
+  { label: "Norvégien",   value: "no" },
+  { label: "Turc",        value: "tr" },
+  { label: "Coréen",      value: "ko" },
+  { label: "Japonais",    value: "ja" },
+  { label: "Arabe",       value: "ar" },
+  { label: "Mandarin",    value: "zh" },
+  { label: "Hindi",       value: "hi" },
+  { label: "Swahili",     value: "sw" },
+  { label: "Thaï",        value: "th" },
+  { label: "Vietnamien",  value: "vi" },
 ]
 
 type Props = {
@@ -53,52 +53,56 @@ export default function LanguageSelector({
   compact = false,
 }: Props) {
   const [open, setOpen] = useState(false)
-  const rootRef    = useRef<HTMLDivElement | null>(null)
-  const dropRef    = useRef<HTMLDivElement | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const dropRef = useRef<HTMLDivElement | null>(null)
 
-  // Close on click outside
+  // Close on interaction outside — handles both mouse and touch
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleOutside(e: MouseEvent | TouchEvent) {
       if (!rootRef.current) return
-      if (!rootRef.current.contains(event.target as Node)) {
+      const target = "touches" in e ? e.touches[0]?.target : e.target
+      if (target && !rootRef.current.contains(target as Node)) {
         setOpen(false)
       }
     }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
+    document.addEventListener("mousedown", handleOutside)
+    document.addEventListener("touchstart", handleOutside, { passive: true })
+    return () => {
+      document.removeEventListener("mousedown", handleOutside)
+      document.removeEventListener("touchstart", handleOutside)
+    }
   }, [])
 
   // Adjust dropdown horizontal position so it never overflows the viewport
   useEffect(() => {
-    if (!open || !dropRef.current || !rootRef.current) return
-    const drop  = dropRef.current
-    const rect  = drop.getBoundingClientRect()
-    const vpW   = window.innerWidth
-
-    // Reset any previous adjustment
+    if (!open || !dropRef.current) return
+    const drop = dropRef.current
+    // Reset to default (align right edge to trigger right edge)
     drop.style.left  = ""
     drop.style.right = "0"
-
-    // If dropdown overflows left side, align to left edge of trigger
-    if (rect.left < 8) {
-      drop.style.right = ""
-      drop.style.left  = "0"
-    }
-    // If dropdown overflows right side, shift left
-    if (rect.right > vpW - 8) {
-      const overflow = rect.right - (vpW - 8)
-      const cur = parseFloat(drop.style.right || "0") || 0
-      drop.style.right = `${cur + overflow}px`
-    }
+    // Measure after paint so getBoundingClientRect is accurate
+    requestAnimationFrame(() => {
+      if (!drop) return
+      const rect = drop.getBoundingClientRect()
+      const vpW  = window.innerWidth
+      if (rect.left < 8) {
+        drop.style.right = ""
+        drop.style.left  = "0"
+      } else if (rect.right > vpW - 8) {
+        drop.style.right = `${rect.right - (vpW - 8)}px`
+        drop.style.left  = ""
+      }
+    })
   }, [open])
 
-  const current = LANGUAGES.find((l) => l.value === value) ?? LANGUAGES[0]
+  const current = LANGUAGES.find(l => l.value === value) ?? LANGUAGES[0]
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} style={{ position: "relative" }}>
+      {/* Trigger button */}
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => setOpen(prev => !prev)}
         aria-label={title}
         style={{
           display: "flex",
@@ -116,6 +120,8 @@ export default function LanguageSelector({
           whiteSpace: "nowrap",
           transition: "background 0.15s",
           maxWidth: compact ? "90px" : "130px",
+          // Eliminates 300 ms tap delay on mobile without disabling pinch-zoom
+          touchAction: "manipulation",
         }}
       >
         {!compact && (
@@ -128,11 +134,14 @@ export default function LanguageSelector({
         <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
           {compact ? current.label.split(" ")[0] : current.label}
         </span>
-        <svg viewBox="0 0 12 12" fill="currentColor" style={{ width: 10, height: 10, flexShrink: 0, opacity: 0.4, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+        <svg viewBox="0 0 12 12" fill="currentColor"
+          style={{ width: 10, height: 10, flexShrink: 0, opacity: 0.4,
+            transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
           <path d="M6 8L1 3h10L6 8z"/>
         </svg>
       </button>
 
+      {/* Dropdown */}
       {open && (
         <div
           ref={dropRef}
@@ -148,6 +157,8 @@ export default function LanguageSelector({
             boxShadow: "0 -8px 32px rgba(0,0,0,0.6)",
             backdropFilter: "blur(20px)",
             overflow: "hidden",
+            // Promote to own compositing layer — smoother rendering on mobile GPU
+            willChange: "transform",
           }}
         >
           {/* Header */}
@@ -163,9 +174,18 @@ export default function LanguageSelector({
             {title}
           </div>
 
-          {/* Scrollable list */}
-          <div style={{ maxHeight: "240px", overflowY: "auto", padding: "6px" }}>
-            {LANGUAGES.map((lang) => {
+          {/* Scrollable list — mobile-optimised */}
+          <div style={{
+            // Adapts to viewport so dropdown never exits the screen on short phones
+            maxHeight: "min(240px, 45vh)",
+            overflowY: "auto",
+            // Prevents scroll from propagating to the page behind the footer
+            overscrollBehavior: "contain",
+            // Smooth momentum scroll on iOS Safari
+            WebkitOverflowScrolling: "touch",
+            padding: "6px",
+          }}>
+            {LANGUAGES.map(lang => {
               const active = lang.value === value
               return (
                 <button
@@ -188,8 +208,9 @@ export default function LanguageSelector({
                     cursor: "pointer",
                     textAlign: "left",
                     transition: "background 0.1s",
-                    // Touch-friendly height
-                    minHeight: "38px",
+                    // 44px touch target meets WCAG 2.5.5 — prevents mis-taps on mobile
+                    minHeight: "44px",
+                    touchAction: "manipulation",
                   }}
                   onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)" }}
                   onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}

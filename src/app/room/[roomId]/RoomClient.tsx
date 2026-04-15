@@ -51,6 +51,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const [transcript,      setTranscript]        = useState<string[]>([])
   const [cloneStatus, setCloneStatus]           = useState<"idle"|"recording"|"cloning"|"ready"|"error">("idle")
   const [translationError, setTranslationError] = useState<string | null>(null)
+  const [isFallbackActive, setIsFallbackActive] = useState(false)
+  const [isJoining,       setIsJoining]         = useState(true)
+  const [joinError,       setJoinError]         = useState<string | null>(null)
+  const [transStep,       setTransStep]         = useState<string | null>(null)
   const screenTrackRef   = useRef<ILocalVideoTrack | null>(null)
   const cloneVoiceIdRef  = useRef<string | null>(null)
   const cloneRecorderRef = useRef<MediaRecorder | null>(null)
@@ -81,9 +85,28 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   )
   // Plan capabilities returned by /api/agora-token — used for language + participant limits
   const planCapsRef    = useRef<PlanCapabilities | null>(null)
+  // Ref to latest startTrans — lets the join effect call it without TDZ / stale-closure issues
+  // (startTrans is declared after the join useEffect due to dependency ordering in the file).
+  const startTransRef  = useRef<((src: string, tgt: string, gender: VoiceGender) => Promise<void>) | null>(null)
 
   // Keep a live ref to remote users for voiceEngine callback (no stale closure)
   useEffect(() => { remoteUsersRef.current = remoteUsers }, [remoteUsers])
+
+  // Live ref for isTranslating — lets the restart useEffect read the current value
+  // even though isTranslating is intentionally excluded from its deps.
+  const isTranslatingRef = useRef(isTranslating)
+  useEffect(() => { isTranslatingRef.current = isTranslating }, [isTranslating])
+
+  // ── Mount-time SDK warmup ─────────────────────────────────────────────────────
+  // Pre-loads the Azure Speech SDK bundle (~200 kB) and fetches the Azure token
+  // in parallel with the Agora join sequence so that the first startTranslation()
+  // call has no extra latency (SDK + token are already cached).
+  useEffect(() => {
+    void getVE().then(ve => {
+      ve.warmupSDK()
+      ve.setTTSProvider("elevenlabs")
+    })
+  }, [])
 
   // ─── Cleanup ────────────────────────────────────────────────────────────────
 
@@ -91,6 +114,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (_ve) {
       await _ve.stopTranslation().catch(() => {})
       _ve.setClonedVoiceId(null)
+      _ve.closeAudioContext()  // release AudioContext so next room join gets a fresh one
     }
 
     // Stop recording if in progress
@@ -220,97 +244,126 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
     const start = async () => {
       try {
-        const res  = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
-        const data = await res.json()
-        if (cancelled) return
+        setIsJoining(true)
+        setJoinError(null)
 
-        // Subscription / participant-limit gate
-        if (!res.ok) {
+        // ── Camera and token fetch in parallel ────────────────────────────
+        // KEY FIX: camera result triggers setLocalVideoTrack() the moment the
+        // device grants access — BEFORE the token fetch (2 DB queries) completes.
+        // This eliminates the black screen that lasted as long as the DB took.
+        setTransStep("Accès caméra…")
+
+        const cameraPromise = AgoraRTC.createMicrophoneAndCameraTracks(
+          { AEC: true, AGC: true, encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 } },
+          { optimizationMode: "motion", encoderConfig: { width: { min: 640, ideal: 1280 }, height: { min: 360, ideal: 720 }, frameRate: { min: 15, ideal: 30 }, bitrateMin: 200, bitrateMax: 1000 } }
+        ).catch(err => {
+          console.error("[Camera/Mic init]", err)
+          return null  // camera failure is recoverable; channel join can still proceed
+        })
+
+        const tokenPromise = fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
+          .then(async r => ({ ok: r.ok, data: await r.json() }))
+
+        // Show camera as soon as the device is ready — does NOT wait for the token.
+        void cameraPromise.then(tracks => {
+          if (cancelled || !tracks) return
+          const [audio, video] = tracks
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          try { (video as any).setOptimizationMode?.("motion") } catch {}
+          tracksRef.current = { audio, video }
+          setLocalVideoTrack(video)
+          setTransStep("Connexion…")
+
+          // Track-ended recovery (USB disconnect / OS device revoke)
+          video.on("track-ended", () => {
+            void (async () => {
+              try {
+                const nv = await AgoraRTC.createCameraVideoTrack({ optimizationMode: "motion", encoderConfig: { width: { min: 640, ideal: 1280 }, height: { min: 360, ideal: 720 }, frameRate: { min: 15, ideal: 30 }, bitrateMin: 200, bitrateMax: 1000 } })
+                if (!tracksRef.current || !clientRef.current) { nv.close(); return }
+                try { await clientRef.current.unpublish(tracksRef.current.video) } catch {}
+                try { tracksRef.current.video.close() } catch {}
+                tracksRef.current = { ...tracksRef.current, video: nv }
+                setLocalVideoTrack(nv)
+                if (clientRef.current.connectionState === "CONNECTED") await clientRef.current.publish(nv)
+              } catch (e) { console.warn("[CAMERA RECOVERY]", e) }
+            })()
+          })
+          audio.on("track-ended", () => {
+            void (async () => {
+              try {
+                const na = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, AGC: true, encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 } })
+                if (!tracksRef.current || !clientRef.current) { na.close(); return }
+                try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
+                try { tracksRef.current.audio.close() } catch {}
+                tracksRef.current = { ...tracksRef.current, audio: na }
+                if (clientRef.current.connectionState === "CONNECTED") await clientRef.current.publish(na)
+              } catch (e) { console.warn("[MIC RECOVERY]", e) }
+            })()
+          })
+        })
+
+        // Wait for both before joining the channel
+        const [tracksResult, tokenResult] = await Promise.all([cameraPromise, tokenPromise])
+
+        if (cancelled) {
+          if (tracksResult) { try { tracksResult[0].close() } catch {} ; try { tracksResult[1].close() } catch {} }
+          return
+        }
+
+        // ── Token validation ──────────────────────────────────────────────
+        const { ok, data } = tokenResult
+        if (!ok) {
           const reason = data.code === "ROOM_FULL"
-            ? `Salle complète. Votre plan autorise jusqu'à ${data.maxParticipants} participants.`
+            ? `Salle complète (max ${data.maxParticipants} participants).`
             : (data.error || "Accès refusé. Vérifiez votre abonnement.")
-          console.error("[ROOM ACCESS]", reason)
+          setJoinError(reason)
           setNetStatus("error")
+          setIsJoining(false)
+          setTransStep(null)
           return
         }
 
         agoraTokenRef.current = data.token
         agoraUidRef.current   = data.uid
-        // Store plan capabilities for language enforcement in startTrans
         if (data.caps) planCapsRef.current = data.caps
 
-        // h264: hardware-accelerated encoding on most GPUs/CPUs (Intel QSV,
-        // AMD VCE, Qualcomm). Frees significant CPU vs software VP8 encode,
-        // leaving more headroom for Azure STT + TTS pipelines.
+        // ── Agora client + events ─────────────────────────────────────────
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "h264" })
         clientRef.current = client
 
-        // Cloud proxy removed: direct UDP is available (ICE candidates resolve
-        // correctly) and startProxyServer(5) was generating spurious JSON_RPC
-        // errors in the console without providing any connectivity benefit.
         if (cancelled) return
 
-        // ── User media events ─────────────────────────────────────────────
         client.on("user-published", async (user, mediaType) => {
-          // Don't attempt subscribe while the peer connection is not ready —
-          // Agora will re-emit user-published after reconnect completes.
           if (client.connectionState !== "CONNECTED") return
-          try { await client.subscribe(user, mediaType) }
-          catch { return }  // CONNECTED-guard above already prevents race; swallow silently
-
+          try { await client.subscribe(user, mediaType) } catch { return }
           if (mediaType === "video") {
-            try {
-              client.setStreamFallbackOption(
-                user.uid,
-                2 as Parameters<typeof client.setStreamFallbackOption>[1]
-              )
-            } catch {}
-            setRemoteUsers((prev) =>
-              prev.find((u) => u.uid === user.uid) ? prev : [...prev, user]
-            )
-            // rAF retry: waits for React to render the container div.
-            // Uses `user` directly from the event closure — avoids the
-            // stale client.remoteUsers lookup that caused race conditions.
+            try { client.setStreamFallbackOption(user.uid, 2 as Parameters<typeof client.setStreamFallbackOption>[1]) } catch {}
+            setRemoteUsers(prev => prev.find(u => u.uid === user.uid) ? prev : [...prev, user])
             let n = 0
             const go = () => {
-              if (document.getElementById(`rv-${user.uid}`)) {
-                try { user.videoTrack?.play(`rv-${user.uid}`) } catch {}
-              } else if (n++ < 40) requestAnimationFrame(go)
+              if (document.getElementById(`rv-${user.uid}`)) { try { user.videoTrack?.play(`rv-${user.uid}`) } catch {} }
+              else if (n++ < 40) requestAnimationFrame(go)
             }
             requestAnimationFrame(go)
           }
-          if (mediaType === "audio") {
-            try { user.audioTrack?.play() } catch {}
-          }
+          if (mediaType === "audio") { try { user.audioTrack?.play() } catch {} }
         })
-
         client.on("user-unpublished", (user, mediaType) => {
-          if (mediaType === "video")
-            setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid))
+          if (mediaType === "video") setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid))
         })
-
         client.on("user-left", (user) => {
-          setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid))
+          setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid))
         })
-
         client.on("connection-state-change", (cur, prev) => {
-          if (cur === "RECONNECTING") {
-            setNetStatus("reconnecting")
-          } else if (cur === "CONNECTED") {
+          if (cur === "RECONNECTING") setNetStatus("reconnecting")
+          else if (cur === "CONNECTED") {
             setNetStatus("ok")
-            // After automatic SDK reconnect: re-play local video and re-subscribe
-            // remote users. The SDK does not do this automatically after RECONNECTING.
             if (prev === "RECONNECTING") void restoreAfterReconnect(client)
           } else if (cur === "DISCONNECTED" && !cancelled) {
-            setTimeout(() => {
-              if (!cancelled && clientRef.current === client) void rejoin(client)
-            }, 3000)
+            setTimeout(() => { if (!cancelled && clientRef.current === client) void rejoin(client) }, 3000)
           }
         })
-
         client.on("exception", (evt) => {
-          // 1005 = RECV_VIDEO_DECODE_FAILED — the remote video decoder stalled.
-          // Fix: unsubscribe the affected user then resubscribe to force a fresh keyframe.
           if (evt.code === 1005 && evt.uid != null && client.connectionState === "CONNECTED") {
             const bad = client.remoteUsers.find(u => u.uid === evt.uid)
             if (bad?.hasVideo) {
@@ -325,147 +378,69 @@ export default function RoomClient({ roomId }: { roomId: string }) {
               })()
             }
           }
-          // All other exception codes (1003/2003 bitrate warnings, etc.) are already
-          // mitigated by the encoder config — no need to surface them.
         })
-
-        // Network quality events are internal telemetry only — no console output.
-        client.on("network-quality", (_stats) => { /* silent telemetry */ })
-
-        // Token renewal — fires ~30 s before the Agora privilege expires.
-        // Without this handler the SDK disconnects silently when the token expires.
+        client.on("network-quality", () => { /* silent telemetry */ })
         client.on("token-privilege-will-expire", () => {
           void (async () => {
             try {
               const r2 = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
               const d2 = await r2.json()
-              if (d2.token) {
-                agoraTokenRef.current = d2.token
-                await client.renewToken(d2.token)
-              }
+              if (d2.token) { agoraTokenRef.current = d2.token; await client.renewToken(d2.token) }
             } catch (e) { console.warn("[TOKEN RENEWAL]", e) }
           })()
         })
 
-        // ── Camera + mic ──────────────────────────────────────────────────
-        // Audio: custom 16 kHz / 40 kbps encoder.
-        //   speech_low_quality preset (24 kbps) had no headroom: under network
-        //   pressure Agora reduced below 24 kbps → SEND_AUDIO_BITRATE_TOO_LOW
-        //   (exception 2003). 40 kbps gives enough margin without affecting STT.
-        //   ANS still off: Azure STT handles server-side noise suppression.
-        //
-        // Video: 720p target, bitrateMin 350, adaptive frame-rate (15–30 fps).
-        //   Previous config (1080p / bitrateMin 1000 / bitrateMax 3000) caused:
-        //   - SEND_VIDEO_BITRATE_TOO_LOW (1003) — encoder couldn't sustain 1000 kbps
-        //   - Packet loss from aggressive bitrate → RECV_VIDEO_DECODE_FAILED (1005)
-        //   - WebSocket ping timeouts from network saturation
-        //   New config lets the SDK adapt frame-rate before dropping bitrate,
-        //   keeping the video fluid on constrained connections.
-        const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks(
-          {
-            AEC: true,
-            AGC: true,
-            encoderConfig: {
-              sampleRate: 16000,
-              stereo:     false,
-              bitrate:    40,   // 40 kbps — headroom over 24 kbps STT floor
-            },
-          },
-          {
-            optimizationMode: "motion",
-            encoderConfig: {
-              width:      { min: 640,  ideal: 1280 },
-              height:     { min: 360,  ideal: 720  },
-              frameRate:  { min: 15,   ideal: 30   },
-              bitrateMin: 200,
-              bitrateMax: 1000,
-            },
-          }
-        )
+        // ── Join + publish ────────────────────────────────────────────────
+        await client.join(process.env.NEXT_PUBLIC_AGORA_APP_ID!, roomId, data.token, data.uid)
 
-        // Belt-and-suspenders: set motion mode on the track object too
-        try { (video as any).setOptimizationMode?.("motion") } catch {} // eslint-disable-line @typescript-eslint/no-explicit-any
-
-        if (cancelled) {
-          try { video.close() } catch {}
-          try { audio.close() } catch {}
-          return
+        if (tracksResult) {
+          const [audio, video] = tracksResult
+          try { if (!audio.enabled) await audio.setEnabled(true) } catch {}
+          try { if (!video.enabled) await video.setEnabled(true) } catch {}
+          await client.publish([audio, video])
         }
 
-        tracksRef.current = { audio, video }
-        setLocalVideoTrack(video)
-
-        // ── Track-ended recovery ──────────────────────────────────────────
-        // Fires when the OS revokes the device (sleep, USB disconnect, permission
-        // change). Without this, the track dies silently and video/audio vanish.
-        video.on("track-ended", () => {
-          void (async () => {
-            try {
-              const newVideo = await AgoraRTC.createCameraVideoTrack({
-                optimizationMode: "motion",
-                encoderConfig: {
-                  width: { min: 640, ideal: 1280 }, height: { min: 360, ideal: 720 },
-                  frameRate: { min: 15, ideal: 30 }, bitrateMin: 200, bitrateMax: 1000,
-                },
-              })
-              if (!tracksRef.current || !clientRef.current) { newVideo.close(); return }
-              try { await clientRef.current.unpublish(tracksRef.current.video) } catch {}
-              try { tracksRef.current.video.close() } catch {}
-              tracksRef.current = { ...tracksRef.current, video: newVideo }
-              setLocalVideoTrack(newVideo)
-              if (clientRef.current.connectionState === "CONNECTED") {
-                await clientRef.current.publish(newVideo)
-              }
-            } catch (e) { console.warn("[CAMERA RECOVERY]", e) }
-          })()
-        })
-
-        audio.on("track-ended", () => {
-          void (async () => {
-            try {
-              const newAudio = await AgoraRTC.createMicrophoneAudioTrack({
-                AEC: true, AGC: true,
-                encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
-              })
-              if (!tracksRef.current || !clientRef.current) { newAudio.close(); return }
-              try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
-              try { tracksRef.current.audio.close() } catch {}
-              tracksRef.current = { ...tracksRef.current, audio: newAudio }
-              if (clientRef.current.connectionState === "CONNECTED") {
-                await clientRef.current.publish(newAudio)
-              }
-            } catch (e) { console.warn("[MIC RECOVERY]", e) }
-          })()
-        })
-
-        await client.join(
-          process.env.NEXT_PUBLIC_AGORA_APP_ID!,
-          roomId,
-          data.token,
-          data.uid
-        )
-        // Ensure tracks are enabled before publish — React StrictMode double-effect
-        // or a race on createMicrophoneAndCameraTracks can leave them in disabled state,
-        // causing TRACK_IS_DISABLED at publish time.
-        try { if (!audio.enabled) await audio.setEnabled(true) } catch {}
-        try { if (!video.enabled) await video.setEnabled(true) } catch {}
-        await client.publish([audio, video])
-        // enableDualStream removed: it doubles the encode workload (CPU) with
-        // no benefit in a 2-person call. For N>2, Agora's SFU handles
-        // adaptive bitrate without needing dual stream from the sender.
-
+        setIsJoining(false)
+        setTransStep(null)
         setNetStatus("ok")
 
-        // ── Warmup Azure Speech SDK in background ─────────────────────────
-        void getVE().then((ve) => { ve.warmupSDK(); ve.setTTSProvider("elevenlabs") })
-
-        // ── Start voice clone capture in background (60s silent recording) ─
-        // By the time the user clicks "Traduire", the clone is ready.
+        // ── Background tasks ──────────────────────────────────────────────
         void startVoiceClone()
+
+        // ── Auto-start translation ────────────────────────────────────────
+        // SDK is already pre-warmed (warmupSDK() ran at mount), so Azure STT
+        // connects in < 300 ms. Translation starts automatically — no button click needed.
+        // startTransRef holds the latest startTrans callback (set just below its declaration).
+        if (startTransRef.current) {
+          try {
+            setTranslationError(null)
+            setTransStep("Démarrage traduction…")
+            await startTransRef.current(sourceLang, targetLang, voiceGender)
+            setIsTranslating(true)
+          } catch (err) {
+            // Surface errors so the user knows what's wrong.
+            // Normalize cryptic Azure/provider messages into user-readable text.
+            const raw = err instanceof Error ? err.message : String(err)
+            let msg = raw
+            if (/azure speech token|speech token|speech key/i.test(raw)) {
+              msg = "Clé Azure Speech invalide ou region incorrecte — vérifiez AZURE_SPEECH_KEY et AZURE_SPEECH_REGION."
+            } else if (/missing azure|missing.*key/i.test(raw)) {
+              msg = "Clé Azure Speech manquante dans la configuration serveur."
+            } else if (raw.length > 90) {
+              msg = raw.slice(0, 90) + "…"
+            }
+            setTranslationError(msg)
+          } finally {
+            setTransStep(null)
+          }
+        }
 
       } catch (err) {
         console.error("[ROOM INIT]", err)
         setNetStatus("error")
+        setIsJoining(false)
+        setTransStep(null)
+        setJoinError("Impossible de rejoindre la salle. Vérifiez votre connexion.")
       } finally {
         isInitializing.current = false
       }
@@ -660,11 +635,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     void ve.warmAudioContext()
     await publishInterpreter()
     setTranslationError(null)
+    setIsFallbackActive(false)   // reset before each (re)start — cleared if Azure succeeds
     await ve.startTranslation(
       src, [tgt],
       {
-        onPartial: (lang, text) => showSubtitle(lang, text, false),
-        onFinal:   (lang, text) => showSubtitle(lang, text, true),
+        onPartial:  (lang, text) => showSubtitle(lang, text, false),
+        onFinal:    (lang, text) => showSubtitle(lang, text, true),
+        onFallback: () => setIsFallbackActive(true),
         onError:   (err) => {
           console.error("[VoiceEngine]", err)
           // Auth errors are fatal and must be surfaced to the user.
@@ -690,6 +667,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       process.env.NODE_ENV === "development" ? null : (planCapsRef.current?.allowedLangs ?? null)
     )
   }, [publishInterpreter, showSubtitle])
+  // Keep ref current — allows the join useEffect to call startTrans without TDZ issue
+  startTransRef.current = startTrans
 
   const toggleTranslation = useCallback(async () => {
     if (isTranslating) {
@@ -697,6 +676,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       await ve.stopTranslation()
       setIsTranslating(false)
       setTranslationError(null)
+      setIsFallbackActive(false)
       subtitleRef.current?.reset()
       return
     }
@@ -713,8 +693,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   // Restart with guard when lang/gender changes mid-session.
   // 600 ms debounce: prevents rapid language-switch from hammering Azure STT
   // with back-to-back WebSocket opens that trigger rate-limit quota errors.
+  // Uses isTranslatingRef (not the closed-over isTranslating) so that a Stop()
+  // during the 600 ms window is correctly honoured — fixes "button non fonctionnel".
   useEffect(() => {
-    if (!isTranslating) return
+    if (!isTranslatingRef.current) return
     const seq = ++restartSeq.current
     const t = setTimeout(async () => {
       if (seq !== restartSeq.current) return
@@ -768,6 +750,24 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           {/* Local tile */}
           <div className="video-tile-local relative bg-[#111] rounded-2xl overflow-hidden border border-white/8 min-h-0">
             <div id="local-video-renderer" className="absolute inset-0" />
+
+            {/* Join progress overlay — shows transStep or joinError while connecting */}
+            {(isJoining || joinError) && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 z-20 gap-2">
+                {joinError ? (
+                  <span className="text-xs font-semibold text-red-400 text-center px-4">{joinError}</span>
+                ) : (
+                  <>
+                    <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 24, height: 24, opacity: 0.6 }}>
+                      <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+                    </svg>
+                    {transStep && <span className="text-[11px] text-white/60 font-medium">{transStep}</span>}
+                  </>
+                )}
+              </div>
+            )}
+
             {isScreenSharing && (
               <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/60 z-10 pointer-events-none">
                 <span className="text-xs text-white/50 bg-black/60 px-3 py-1.5 rounded-full">Partage d&apos;ecran actif</span>
@@ -822,6 +822,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       {/* ── Control Bar ────────────────────────────────────────────────────── */}
       <footer className="shrink-0 select-none" style={{ background: "rgba(6,6,10,0.98)", borderTop: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
 
+        {/* Fallback mode banner */}
+        {isFallbackActive && isTranslating && (
+          <div className="flex items-center justify-between gap-2 px-4 py-1 bg-amber-700/50 text-amber-200 text-xs font-medium">
+            <span>⚡ Mode fallback actif — reconnaissance vocale navigateur (Azure indisponible)</span>
+          </div>
+        )}
+
         {/* Translation error banner */}
         {translationError && (
           <div className="flex items-center justify-between gap-2 px-4 py-1.5 bg-red-900/60 text-red-200 text-xs font-medium">
@@ -843,20 +850,25 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             <LanguageSelector title="Je parle"   value={sourceLang}  onChange={setSourceLang} compact />
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 12, height: 12, opacity: 0.3, flexShrink: 0 }}><path strokeLinecap="round" d="M2 8h12M10 4l4 4-4 4"/></svg>
             <LanguageSelector title="Traduit en" value={targetLang}  onChange={setTargetLang} compact />
-            <VoiceSelector value={voiceGender} onChange={setVoiceGender} />
+            <VoiceSelector value={voiceGender} onChange={setVoiceGender} compact />
             <button
               onClick={toggleTranslation}
+              disabled={isJoining}
               style={{
                 height: 32, padding: "0 12px", borderRadius: "10px", border: 0,
-                background: isTranslating
+                background: isJoining
+                  ? "rgba(255,255,255,0.12)"
+                  : isTranslating
                   ? "linear-gradient(135deg, #2563eb, #1d4ed8)"
                   : "linear-gradient(135deg, #6366f1, #7c3aed)",
-                color: "white", fontWeight: 700, fontSize: "12px",
-                cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-                boxShadow: isTranslating ? "0 3px 10px rgba(37,99,235,0.45)" : "0 3px 10px rgba(99,102,241,0.45)",
+                color: isJoining ? "rgba(255,255,255,0.3)" : "white",
+                fontWeight: 700, fontSize: "12px",
+                cursor: isJoining ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap", flexShrink: 0,
+                boxShadow: isJoining ? "none" : isTranslating ? "0 3px 10px rgba(37,99,235,0.45)" : "0 3px 10px rgba(99,102,241,0.45)",
               }}
             >
-              {isTranslating ? "Stop" : "Traduire"}
+              {isJoining ? "…" : isTranslating ? "Stop" : "Traduire"}
             </button>
           </div>
 
@@ -937,18 +949,23 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             <VoiceSelector value={voiceGender} onChange={setVoiceGender} />
             <button
               onClick={toggleTranslation}
+              disabled={isJoining}
               style={{
                 height: 34, padding: "0 14px", borderRadius: "10px", border: 0,
-                background: isTranslating
+                background: isJoining
+                  ? "rgba(255,255,255,0.12)"
+                  : isTranslating
                   ? "linear-gradient(135deg, #2563eb, #1d4ed8)"
                   : "linear-gradient(135deg, #6366f1, #7c3aed)",
-                color: "white", fontWeight: 700, fontSize: "12.5px",
-                cursor: "pointer", whiteSpace: "nowrap",
-                boxShadow: isTranslating ? "0 4px 14px rgba(37,99,235,0.45)" : "0 4px 14px rgba(99,102,241,0.45)",
+                color: isJoining ? "rgba(255,255,255,0.3)" : "white",
+                fontWeight: 700, fontSize: "12.5px",
+                cursor: isJoining ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: isJoining ? "none" : isTranslating ? "0 4px 14px rgba(37,99,235,0.45)" : "0 4px 14px rgba(99,102,241,0.45)",
                 transition: "all 0.2s",
               }}
             >
-              {isTranslating ? "Arreter" : "Traduire"}
+              {isJoining ? "…" : isTranslating ? "Arreter" : "Traduire"}
             </button>
           </div>
 

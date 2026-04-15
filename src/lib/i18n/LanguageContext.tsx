@@ -10,12 +10,18 @@ const _langCache: Record<string, Record<string, unknown>> = {
 let _extLoaded = false;
 let _extLoadPromise: Promise<void> | null = null;
 
+// Subscribers notified when extended translations finish loading
+const _extListeners: Set<() => void> = new Set();
+
 function ensureExtended(): Promise<void> {
   if (_extLoaded) return Promise.resolve();
   if (_extLoadPromise) return _extLoadPromise;
   _extLoadPromise = import("./translations").then((m) => {
     Object.assign(_langCache, m.translations as Record<string, unknown>);
     _extLoaded = true;
+    // Notify all mounted LanguageProviders so they re-render with correct translations
+    _extListeners.forEach((fn) => fn());
+    _extListeners.clear();
   });
   return _extLoadPromise;
 }
@@ -30,33 +36,33 @@ const translations = new Proxy({} as Record<LanguageCode, typeof frBase>, {
 });
 
 export const languagesList = [
-  { code: "fr", label: "FranÃ§ais" },
+  { code: "fr", label: "Français" },
   { code: "en", label: "English" },
-  { code: "es", label: "EspaÃ±ol" },
+  { code: "es", label: "Español" },
   { code: "de", label: "Deutsch" },
   { code: "it", label: "Italiano" },
-  { code: "pt", label: "PortuguÃªs" },
+  { code: "pt", label: "Português" },
   { code: "nl", label: "Nederlands" },
-  { code: "zh", label: "ä¸­æ–‡" },
-  { code: "ja", label: "æ—¥æœ¬èªž" },
-  { code: "ar", label: "Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©" },
-  { code: "ko", label: "í•œêµ­ì–´" },
-  { code: "hi", label: "à¤¹à¤¿à¤¨à¥à¤¦à¥€" },
-  { code: "tr", label: "TÃ¼rkÃ§e" },
-  { code: "ru", label: "Ð ÑƒÑÑÐºÐ¸Ð¹" },
+  { code: "zh", label: "中文" },
+  { code: "ja", label: "日本語" },
+  { code: "ar", label: "العربية" },
+  { code: "ko", label: "한국어" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "tr", label: "Türkçe" },
+  { code: "ru", label: "Русский" },
   { code: "pl", label: "Polski" },
   { code: "sv", label: "Svenska" },
-  { code: "el", label: "Î•Î»Î»Î·Î½Î¹ÎºÎ¬" },
-  { code: "cs", label: "ÄŒeÅ¡tina" },
-  { code: "ro", label: "RomÃ¢nÄƒ" },
+  { code: "el", label: "Ελληνικά" },
+  { code: "cs", label: "Čeština" },
+  { code: "ro", label: "Română" },
   { code: "hu", label: "Magyar" },
   { code: "sw", label: "Kiswahili" },
-  { code: "th", label: "à¸ à¸²à¸©à¸²à¹„à¸—à¸¢" },
-  { code: "vi", label: "Tiáº¿ng Viá»‡t" },
-  { code: "bg", label: "Bulgarski" },
+  { code: "th", label: "ภาษาไทย" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "bg", label: "Български" },
   { code: "da", label: "Dansk" },
   { code: "fi", label: "Suomi" },
-  { code: "sk", label: "Slovencina" },
+  { code: "sk", label: "Slovenčina" },
   { code: "no", label: "Norsk" },
 ] as const;
 
@@ -74,10 +80,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem("itg_lang") as LanguageCode | null;
     return saved || "fr";
   });
+  // Bumped when extended translations finish loading — forces re-evaluation of `t`
+  const [extRev, setExtRev] = useState(0);
 
   useEffect(() => {
     if (lang === "fr" || lang === "en") return;
+    if (_extLoaded) return;
+    const bump = () => setExtRev((r) => r + 1);
+    _extListeners.add(bump);
     void ensureExtended();
+    return () => { _extListeners.delete(bump); };
   }, [lang]);
 
   useEffect(() => {
@@ -106,7 +118,8 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     }
 
     return String(current ?? fallbackFr ?? fallbackEn ?? path);
-  }, [lang]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, extRev]);  // extRev forces re-evaluation when extended translations arrive
 
   const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
 

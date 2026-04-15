@@ -57,9 +57,11 @@ export const TTS_VOICE = TTS_VOICE_FEMALE
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SubtitleCallbacks = {
-  onPartial: (lang: string, text: string) => void
-  onFinal:   (lang: string, text: string) => void
-  onError?:  (err: string) => void
+  onPartial:   (lang: string, text: string) => void
+  onFinal:     (lang: string, text: string) => void
+  onError?:    (err: string) => void
+  /** Called when the pipeline switches to Web Speech API fallback mode */
+  onFallback?: () => void
 }
 
 export type VoiceGender = "female" | "male"
@@ -100,10 +102,25 @@ let activeSynthDone: (() => void) | null = null
 let _azureSynth: any = null
 let _azureSynthVoice = ""
 
+// ─── TTS sequential queue ─────────────────────────────────────────────────────
+// Ensures sentences play in transcript order even when concurrent ElevenLabs
+// fetches return out of order (network jitter between API responses).
+type TTSJob = { text: string; lang: string; voiceMap: Record<string, string> }
+const _ttsQueue: TTSJob[] = []
+let   _ttsRunning = false
+
+// AbortController for the in-flight ElevenLabs fetch — cancelled when a new
+// sentence starts or stopTranslation() is called.
+let _elAbort: AbortController | null = null
+
 // ─── Web Speech API fallback state ───────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _wsr: any = null               // SpeechRecognition instance (browser fallback)
 let _wsrActive = false             // true while fallback is supposed to be running
+let _fallbackMode = false          // true when Web Speech pipeline is active
+
+/** Returns true when the Web Speech API fallback is the active STT pipeline. */
+export function isFallbackMode(): boolean { return _fallbackMode }
 
 // ─── TTS provider ─────────────────────────────────────────────────────────────
 
@@ -133,19 +150,39 @@ const ELEVENLABS_UNSUPPORTED = new Set(["sw", "ln", "th"])
 // ─── ElevenLabs TTS ───────────────────────────────────────────────────────────
 
 async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
+  // Abort any previous in-flight EL request (new sentence interrupts the old one)
+  _elAbort?.abort()
+  const ctrl = new AbortController()
+  _elAbort = ctrl
+
   try {
     const res = await fetch("/api/elevenlabs-tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Use cloned voice when available — falls back to gender default in the route
-      body: JSON.stringify({ text, gender: _ttsGenderGlobal, voiceId: _clonedVoiceId ?? undefined }),
+      // Pass lang so the route can supply language_code to ElevenLabs for
+      // better accuracy (avoids auto-detection overhead).
+      body: JSON.stringify({
+        text,
+        lang,
+        gender:  _ttsGenderGlobal,
+        voiceId: _clonedVoiceId ?? undefined,
+      }),
+      signal: ctrl.signal,
     })
     if (!res.ok) throw new Error(`ElevenLabs ${res.status}`)
     const arrayBuffer = await res.arrayBuffer()
-    if (arrayBuffer.byteLength > 0) void scheduleAudio(arrayBuffer)
-  } catch {
-    const voiceMap = _ttsGenderGlobal === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
-    await speakWithAzure(text, lang, voiceMap)
+    // Only schedule if this request was not aborted while waiting for the response
+    if (!ctrl.signal.aborted && arrayBuffer.byteLength > 0) void scheduleAudio(arrayBuffer)
+  } catch (err) {
+    // AbortError = intentionally cancelled — not an error
+    if (err instanceof DOMException && err.name === "AbortError") return
+    // Fallback to Azure TTS — only if SDK is loaded (avoids null crash on race)
+    if (_sdk) {
+      const voiceMap = _ttsGenderGlobal === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+      await speakWithAzure(text, lang, voiceMap)
+    }
+  } finally {
+    if (_elAbort === ctrl) _elAbort = null
   }
 }
 
@@ -159,7 +196,8 @@ async function speakWithAzure(
   lang: string,
   voiceMap: Record<string, string>
 ): Promise<void> {
-  const sdk   = _sdk!
+  if (!_sdk) return  // SDK not yet loaded — skip rather than crash on null assertion
+  const sdk   = _sdk
   const voice = voiceMap[lang] ?? "en-US-AriaNeural"
 
   // Reuse cached synthesizer if voice hasn't changed; otherwise recreate.
@@ -204,7 +242,13 @@ async function ensureToken(): Promise<void> {
   if (azureToken && Date.now() < azureTokenExpiry) return
   const res  = await fetch("/api/azure-speech-token")
   const data = await res.json()
-  if (data.error) throw new Error(data.error)
+  if (data.error) {
+    // Surface HTTP status when available — helps distinguish 401 (bad key) from 500 (server bug)
+    const hint = res.status === 401 || /401|invalid subscription/i.test(data.details ?? "")
+      ? "Azure Speech Token: clé invalide ou region incorrecte"
+      : data.error
+    throw new Error(hint)
+  }
   azureToken       = data.token
   azureRegion      = data.region
   azureTokenExpiry = Date.now() + 9 * 60 * 1000
@@ -233,12 +277,42 @@ export async function warmAudioContext(): Promise<void> {
 }
 
 // ─── Web Speech API fallback ──────────────────────────────────────────────────
-// Activated automatically when Azure STT returns "Quota exceeded".
-// Uses the browser's native SpeechRecognition (Chrome/Edge only) for STT, then
-// calls /api/translate for text translation. Lower accuracy than Azure but free.
+// Primary pipeline when Azure Speech is unavailable (bad key, quota, network).
+// Uses the browser's native SpeechRecognition (Chrome/Edge/Android) for STT,
+// then calls /api/translate (DeepL → Gemini) for translation.
 //
-// Partials: shown in source language (translation is async, can't keep up).
-// Finals: translated via /api/translate → text subtitles + TTS voice.
+// Partials: shown in source language while translation is fetching (~300-800ms).
+// Finals:   translated via /api/translate → text subtitles + ElevenLabs TTS.
+//
+// NOT available on iOS Safari (no SpeechRecognition support).
+
+// Internal helper — common entry point for all fallback activations.
+// Handles browser support detection, sets _fallbackMode, notifies the UI.
+async function activateWebSpeechFallback(
+  reason: string,
+  sourceLang: string,
+  targets: string[],
+  callbacks: SubtitleCallbacks,
+  ttsLang: string | undefined,
+  voiceGender: VoiceGender,
+  getRemoteCount: (() => number) | undefined
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+  if (!SR) {
+    // iOS Safari / Firefox without speech flag — no fallback possible
+    callbacks.onError?.(
+      `${reason}. Traduction non disponible : ce navigateur ne supporte pas l'API Web Speech (utilisez Chrome ou Edge).`
+    )
+    return
+  }
+
+  _fallbackMode = true
+  callbacks.onFallback?.()   // notify UI to show the fallback indicator
+  console.info(`[VoiceEngine] ${reason} — activating Web Speech API fallback`)
+  await startWebSpeechFallback(sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount)
+}
 
 async function startWebSpeechFallback(
   sourceLang: string,
@@ -250,12 +324,7 @@ async function startWebSpeechFallback(
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SR) {
-    callbacks.onError?.("Azure STT quota exceeded. Browser STT (Chrome) not available either.")
-    return
-  }
-
-  console.info("[VoiceEngine] Azure quota exceeded — using browser STT fallback (Chrome)")
+  if (!SR) return  // already checked by activateWebSpeechFallback
 
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
   _wsrActive = true
@@ -298,7 +367,7 @@ async function startWebSpeechFallback(
               callbacks.onFinal(lang, translated)
               if (ttsLang && lang === ttsLang) {
                 const rc = getRemoteCount ? getRemoteCount() : 1
-                if (rc > 0) void speakTranslated(translated, lang, voiceMap)
+                if (rc > 0) enqueueTTS(translated, lang, voiceMap)
               }
             } catch {
               // Translation API failed — show original transcript at least
@@ -369,11 +438,31 @@ export async function startTranslation(
   // eslint-disable-next-line no-param-reassign
   targetLangs = filteredTargets
 
-  if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
-  const sdk = _sdk
+  // ── Compute targets early — needed by both Azure and Web Speech paths ──────
+  const targets = targetLangs
+    .filter((t) => t !== sourceLang)
+    .filter((t) => t !== "ln")
+  if (targets.length === 0) targets.push(sourceLang === "en" ? "fr" : "en")
 
-  // Refresh token if expired (handles long sessions > 10 min)
-  await ensureToken()
+  _ttsGenderGlobal = voiceGender
+  const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+
+  // ── Try Azure Speech ───────────────────────────────────────────────────────
+  // If Azure is unavailable (bad key, quota, network), automatically switch to
+  // the Web Speech API fallback instead of throwing an error that breaks the call.
+  let sdk: SDK
+  try {
+    if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
+    sdk = _sdk
+    await ensureToken()         // throws if key invalid or network error
+    _fallbackMode = false       // Azure is reachable — clear any previous fallback state
+  } catch (azureErr) {
+    const reason = azureErr instanceof Error ? azureErr.message : "Azure Speech indisponible"
+    await activateWebSpeechFallback(
+      reason, sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount
+    )
+    return  // Web Speech fallback is now running; Azure setup below is skipped
+  }
 
   const speechConfig = sdk.SpeechTranslationConfig.fromAuthorizationToken(
     azureToken, azureRegion
@@ -391,18 +480,11 @@ export async function startTranslation(
   )
   // TrueText removed: adds 300ms+ latency on finals, no benefit for live translation
 
-  const targets = targetLangs
-    .filter((t) => t !== sourceLang)
-    .filter((t) => t !== "ln")
-  if (targets.length === 0) targets.push(sourceLang === "en" ? "fr" : "en")
   for (const lang of targets) speechConfig.addTargetLanguage(toAzureTarget(lang))
 
   const audioConfig = sdk.AudioConfig.fromDefaultMicrophoneInput()
   recognizer = new sdk.TranslationRecognizer(speechConfig, audioConfig)
   const r = recognizer
-
-  _ttsGenderGlobal = voiceGender
-  const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
 
   // ── recognizing: immediate partial subtitle ─────────────────────────────────
   r.recognizing = (
@@ -429,7 +511,9 @@ export async function startTranslation(
       callbacks.onFinal(lang, text)
       if (ttsLang && lang === ttsLang) {
         const rc = getRemoteCount ? getRemoteCount() : 1
-        if (rc > 0) void speakTranslated(text, lang, voiceMap)
+        // enqueueTTS guarantees in-order playback even when concurrent API responses
+        // arrive out of order — fixes the "wrong sentence plays first" race condition.
+        if (rc > 0) enqueueTTS(text, lang, voiceMap)
       }
     }
   }
@@ -452,10 +536,11 @@ export async function startTranslation(
       if (recognizer === r) recognizer = null
       try { r.close() } catch {}
 
-      startWebSpeechFallback(
+      activateWebSpeechFallback(
+        "Quota Azure STT dépassé",
         sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount
       ).catch(() => {
-        callbacks.onError?.(`Azure STT: quota exceeded. Vérifiez votre abonnement Azure.`)
+        callbacks.onError?.(`Azure STT: quota dépassé et Web Speech indisponible.`)
       })
 
     } else if (isAuth) {
@@ -492,10 +577,38 @@ export async function startTranslation(
   })
 }
 
+// ─── Close AudioContext (call on room unmount) ────────────────────────────────
+// Browsers have a limit on concurrent AudioContexts (~6 on Chrome/Safari).
+// Not closing it when the user leaves the room causes a "zombie" context that
+// counts against that limit on the next room join.
+
+export function closeAudioContext(): void {
+  _ttsQueue.length = 0
+  _ttsRunning = false
+  playbackEndTime = 0
+  _elAbort?.abort()
+  _elAbort = null
+  if (ttsCtx) {
+    try { ttsCtx.close() } catch {}
+    ttsCtx       = null
+    ttsDestNode  = null
+  }
+}
+
 // ─── Stop translation ─────────────────────────────────────────────────────────
 
 export async function stopTranslation(): Promise<void> {
-  cancelActiveSynth()
+  _fallbackMode = false        // reset fallback mode on every stop
+
+  // Clear the TTS queue so no stale sentences play after stop
+  _ttsQueue.length = 0
+  _ttsRunning = false
+
+  // Reset audio timeline — prevents a long scheduling backlog if sentences
+  // accumulated while the user was speaking quickly.
+  playbackEndTime = 0
+
+  cancelActiveSynth()  // also aborts any in-flight EL request
 
   // Release cached Azure TTS synthesizer to free the WebSocket connection.
   if (_azureSynth) {
@@ -520,19 +633,32 @@ export async function stopTranslation(): Promise<void> {
   try { r.close() } catch {}
 }
 
-// ─── TTS dispatch ─────────────────────────────────────────────────────────────
+// ─── TTS dispatch — sequential queue ─────────────────────────────────────────
+// Sentences are enqueued and played strictly in-order.
+// Calling enqueueTTS() drops any currently-queued future sentences so the latest
+// sentence plays as soon as the current one finishes.  This prevents sentences
+// from building up when the speaker talks faster than ElevenLabs can generate.
 
-async function speakTranslated(
-  text: string,
-  lang: string,
-  voiceMap: Record<string, string>
-): Promise<void> {
-  cancelActiveSynth()  // interrupt previous utterance if still running
-  if (_ttsProvider === "elevenlabs" && !ELEVENLABS_UNSUPPORTED.has(lang)) {
-    await speakWithElevenLabs(text, lang)
-  } else {
-    await speakWithAzure(text, lang, voiceMap)
+function enqueueTTS(text: string, lang: string, voiceMap: Record<string, string>): void {
+  // Drop stale queued items — only keep the job that was just added.
+  // This ensures the most recent sentence is always next, never buried under backlog.
+  _ttsQueue.length = 0
+  _ttsQueue.push({ text, lang, voiceMap })
+  if (!_ttsRunning) void drainTTSQueue()
+}
+
+async function drainTTSQueue(): Promise<void> {
+  _ttsRunning = true
+  while (_ttsQueue.length > 0) {
+    const job = _ttsQueue.shift()!
+    cancelActiveSynth()  // interrupt previous Azure utterance if still running
+    if (_ttsProvider === "elevenlabs" && !ELEVENLABS_UNSUPPORTED.has(job.lang)) {
+      await speakWithElevenLabs(job.text, job.lang)
+    } else {
+      await speakWithAzure(job.text, job.lang, job.voiceMap)
+    }
   }
+  _ttsRunning = false
 }
 
 function cancelActiveSynth(): void {
@@ -546,6 +672,9 @@ function cancelActiveSynth(): void {
     if (_azureSynth === synth) { _azureSynth = null; _azureSynthVoice = "" }
   }
   done?.()
+  // Also abort any in-flight ElevenLabs request
+  _elAbort?.abort()
+  _elAbort = null
 }
 
 // ─── Web Audio: sequential TTS playback into Agora interpreter track ──────────
