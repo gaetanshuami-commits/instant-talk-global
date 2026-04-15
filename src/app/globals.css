@@ -213,6 +213,57 @@ body {
 /* ── Focus ring ──────────────────────────────────────────────────────────────── */
 :focus-visible { outline: 2px solid #635bff; outline-offset: 3px; }
 
+/* ── Centered Desktop Container Layout (mobile) ─────────────────────────────── */
+/* On mobile, content stays in a centered desktop-width container.               */
+/* Cards, sections and grids do NOT stretch full-width or stack to narrow single */
+/* columns. The layout wraps naturally within the constrained max-width.          */
+.page-container {
+  width: 100%;
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  /* Navbar: keep all elements inline — logo, lang selector, CTA, hamburger */
+  header nav { display: none; }
+
+  /* Cards: centered, min-width maintained, natural wrap */
+  .card-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  /* Pricing cards: side-by-side with scroll when needed */
+  .pricing-grid {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 16px;
+    padding-bottom: 12px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pricing-grid > * {
+    flex: 0 0 280px;
+    scroll-snap-align: start;
+  }
+
+  /* Room footer control bar: ensure all controls are visible */
+  .room-footer-mobile {
+    padding: 6px 8px 10px;
+  }
+}
+
 /* ── Room / LiveKit video fix ────────────────────────────────────────────────── */
 .livekit-video video { object-fit: contain !important; }
 video { object-fit: contain !important; }

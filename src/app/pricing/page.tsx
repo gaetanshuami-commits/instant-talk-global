@@ -116,23 +116,11 @@ export default function PricingPage() {
     setSource(new URLSearchParams(window.location.search).get("source"));
   }, []);
 
-  async function startCheckout(plan: "premium" | "business") {
-    setLoadingPlan(plan);
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, trial: false }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.url) {
-        throw new Error(data?.details || data?.error || "Stripe checkout failed");
-      }
-      window.location.href = data.url;
-    } catch (error) {
-      console.error("[pricing checkout]", error instanceof Error ? error.message : "unknown_error");
-      setLoadingPlan(null);
-    }
+  function startCheckout(plan: typeof plans[number]) {
+    const href = annual ? plan.stripeAnnual : plan.stripeMonthly;
+    if (!href || href === "/contact") return;
+    setLoadingPlan(plan.key);
+    window.location.href = href;
   }
 
   return (
@@ -264,7 +252,7 @@ export default function PricingPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => void startCheckout(plan.key as "premium" | "business")}
+                        onClick={() => startCheckout(plan)}
                         disabled={loadingPlan === plan.key}
                         className={`flex items-center justify-center rounded-2xl px-5 py-4 text-sm font-bold transition disabled:opacity-60 ${
                           plan.featured

@@ -39,8 +39,8 @@ export default function AICompanion({ transcript, defaultLang = "fr", onClose }:
   const [error,      setError]      = useState<string | null>(null)
 
   const call = useCallback(async (type: "summary" | "actions") => {
-    if (transcript.length < 3) {
-      setError("Pas assez de transcription — parlez quelques secondes puis relancez.")
+    if (transcript.length < 1) {
+      setError("Aucune transcription — activez la traduction et parlez quelques secondes.")
       return
     }
     setLoading(true)
@@ -71,8 +71,8 @@ export default function AICompanion({ transcript, defaultLang = "fr", onClose }:
 
   return (
     <div style={{
-      position: "absolute", bottom: "80px", right: "16px",
-      width: "360px", zIndex: 50,
+      position: "absolute", bottom: "80px", right: "8px",
+      width: "min(360px, calc(100vw - 16px))", zIndex: 50,
       borderRadius: "20px",
       border: "1px solid rgba(99,102,241,0.28)",
       background: "rgba(4,7,15,0.97)",

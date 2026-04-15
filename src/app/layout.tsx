@@ -47,6 +47,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
+      <head>
+        <meta charSet="utf-8" />
+      </head>
       <body className="min-h-screen">
         <LanguageProvider>{children}</LanguageProvider>
       </body>

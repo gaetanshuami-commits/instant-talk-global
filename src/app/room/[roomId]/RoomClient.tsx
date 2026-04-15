@@ -872,37 +872,51 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             </button>
           </div>
 
-          {/* Row 2: Media controls + secondary tools */}
+          {/* Row 2: Media controls */}
           <div className="flex items-center justify-between gap-1">
             {/* Left cluster: essential media controls */}
-            <div className="flex gap-1">
+            <div className="flex gap-1 flex-wrap">
               <CtrlBtn label={isMicOn ? "Micro" : "Micro off"} active={!isMicOn} activeColor="#dc2626"
                 onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }}
                 icon={isMicOn
                   ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
                   : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>}
+                small
               />
-              <CtrlBtn label={isCamOn ? "Camera" : "Camera off"} active={!isCamOn} activeColor="#dc2626"
+              <CtrlBtn label={isCamOn ? "Cam" : "Cam off"} active={!isCamOn} activeColor="#dc2626"
                 onClick={async () => { if (!tracksRef.current) return; const n = !isCamOn; await tracksRef.current.video.setEnabled(n); setIsCamOn(n) }}
                 icon={isCamOn
                   ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M3.5 7A1.5 1.5 0 002 8.5v5A1.5 1.5 0 003.5 15h8A1.5 1.5 0 0013 13.5v-1.3l2.15 1.43A.75.75 0 0016.5 13V9a.75.75 0 00-1.35-.45L13 9.9V8.5A1.5 1.5 0 0011.5 7h-8z"/></svg>
                   : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, color: "#fca5a5" }}><path fillRule="evenodd" d="M4.28 3.22a.75.75 0 00-1.06 1.06l.19.19C3.15 4.7 3 5.09 3 5.5v7A2.5 2.5 0 005.5 15h7c.41 0 .8-.15 1.09-.41l1.12 1.12a.75.75 0 101.06-1.06L4.28 3.22zm3.53 8.66l5.79 5.79A2.5 2.5 0 0015 14.5v-7c0-.5-.19-.97-.5-1.32l-6.69 6.7z" clipRule="evenodd"/></svg>}
+                small
               />
-              <CtrlBtn label={isScreenSharing ? "Écran ON" : "Écran"} active={isScreenSharing} activeColor="#0891b2"
+              <CtrlBtn label={isScreenSharing ? "Écran✓" : "Écran"} active={isScreenSharing} activeColor="#0891b2"
                 onClick={() => void toggleScreenShare()}
                 icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path fillRule="evenodd" d="M2 4.25A2.25 2.25 0 014.25 2h11.5A2.25 2.25 0 0118 4.25v8.5A2.25 2.25 0 0115.75 15h-3.105a3.501 3.501 0 001.1 1.677A.75.75 0 0113.26 18H6.74a.75.75 0 01-.484-1.323A3.501 3.501 0 007.355 15H4.25A2.25 2.25 0 012 12.75v-8.5zm1.5 0v7.5c0 .414.336.75.75.75h11.5a.75.75 0 00.75-.75v-7.5a.75.75 0 00-.75-.75H4.25a.75.75 0 00-.75.75z" clipRule="evenodd"/></svg>}
+                small
+              />
+              <CtrlBtn label={isANS ? "Filtre✓" : "Filtre"} active={isANS} activeColor="#15803d"
+                onClick={() => void toggleANS()}
+                icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M10.5 3.75a.75.75 0 00-1.5 0v1.5a.75.75 0 001.5 0v-1.5zM14.78 5.72a.75.75 0 00-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zm1.47 3.53a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm-3.78 5.06a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 00-1.06 1.06l1.06 1.06zm-6.5-1.06a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06l-1.06-1.06zM4.75 10a.75.75 0 000-1.5h-1.5a.75.75 0 000 1.5h1.5zm1.47-5.28a.75.75 0 00-1.06 1.06l1.06 1.06a.75.75 0 001.06-1.06L6.22 4.72zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/></svg>}
+                small
               />
             </div>
 
             {/* Right cluster: tools + quit */}
             <div className="flex gap-1 items-center">
+              <CtrlBtn label="Board" active={showWhiteboard} activeColor="#7c3aed"
+                onClick={() => setShowWhiteboard(!showWhiteboard)}
+                icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2H4zm0 2h12v8H4V7z" clipRule="evenodd"/><path d="M7 9.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5z"/></svg>}
+                small
+              />
               <CtrlBtn label="IA" active={showAICompanion} activeColor="#4f46e5"
                 onClick={() => setShowAICompanion(!showAICompanion)}
                 icon={<svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z"/></svg>}
+                small
               />
               <button
                 onClick={() => { void cleanup(); window.location.href = "/" }}
-                style={{ height: 34, padding: "0 12px", borderRadius: "9px", border: "1px solid rgba(220,38,38,0.3)", background: "rgba(220,38,38,0.18)", color: "#fca5a5", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}
+                style={{ height: 32, padding: "0 10px", borderRadius: "9px", border: "1px solid rgba(220,38,38,0.3)", background: "rgba(220,38,38,0.18)", color: "#fca5a5", fontWeight: 700, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 Quitter
               </button>
