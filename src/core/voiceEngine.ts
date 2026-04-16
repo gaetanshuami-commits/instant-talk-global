@@ -205,9 +205,12 @@ async function speakWithAzure(
     if (_azureSynth) { try { _azureSynth.close() } catch {} }
     const cfg = sdk.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion)
     cfg.speechSynthesisVoiceName = voice
+    // PullAudioOutputStream : récupère les données audio SANS jouer localement.
+    // null AudioConfig = lecture sur les haut-parleurs du navigateur (bug audio local).
+    const pullStream = sdk.AudioOutputStream.createPullStream()
     _azureSynth = new sdk.SpeechSynthesizer(
       cfg,
-      null as unknown as InstanceType<typeof sdk.AudioConfig>
+      sdk.AudioConfig.fromStreamOutput(pullStream)
     )
     _azureSynthVoice = voice
   }
@@ -243,9 +246,8 @@ async function ensureToken(): Promise<void> {
   const res  = await fetch("/api/azure-speech-token")
   const data = await res.json()
   if (data.error) {
-    // Surface HTTP status when available — helps distinguish 401 (bad key) from 500 (server bug)
     const hint = res.status === 401 || /401|invalid subscription/i.test(data.details ?? "")
-      ? "Azure Speech Token: clé invalide ou region incorrecte"
+      ? "Service vocal: clé invalide ou région incorrecte"
       : data.error
     throw new Error(hint)
   }
@@ -259,8 +261,14 @@ async function ensureToken(): Promise<void> {
 export async function warmupSDK(): Promise<void> {
   try {
     getTTSMediaStream()
-    if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
-    await ensureToken()
+    // Charge le SDK STT serveur uniquement sur les navigateurs sans Web Speech API
+    // (iOS Safari). Chrome/Edge utilisent l'API native — pas de token requis.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasSR = typeof window !== "undefined" && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+    if (!hasSR) {
+      if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
+      await ensureToken()
+    }
   } catch {
     // Non-fatal — retried in startTranslation if needed
   }
@@ -309,8 +317,8 @@ async function activateWebSpeechFallback(
   }
 
   _fallbackMode = true
-  callbacks.onFallback?.()   // notify UI to show the fallback indicator
-  console.info(`[VoiceEngine] ${reason} — activating Web Speech API fallback`)
+  callbacks.onFallback?.()
+  console.info(`[VoiceEngine] mode compatible activé — ${reason}`)
   await startWebSpeechFallback(sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount)
 }
 
@@ -337,10 +345,11 @@ async function startWebSpeechFallback(
     wsr.maxAlternatives = 1
     _wsr = wsr
 
-    // Track the highest final-result index we've already processed to avoid
-    // re-emitting the same translation when the Web Speech API fires onresult
-    // with accumulated results (the API never removes finalized entries).
+    // Double protection : index + contenu.
+    // lastProcessedFinalIdx remis à -1 à chaque restart (onend).
+    // lastTranslatedText bloque les doublons de contenu que Chrome peut rejouer.
     let lastProcessedFinalIdx = -1
+    let lastTranslatedText    = ""
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onresult = async (event: any) => {
@@ -350,11 +359,13 @@ async function startWebSpeechFallback(
         if (!transcript) continue
 
         if (result.isFinal) {
-          // Skip results we've already translated to prevent duplicate subtitles
+          // Saut si déjà traité (même index OU même texte)
           if (i <= lastProcessedFinalIdx) continue
+          if (transcript === lastTranslatedText) continue
           lastProcessedFinalIdx = i
+          lastTranslatedText    = transcript
 
-          // Traduction de toutes les langues en une seule requête batch (exécution parallèle)
+          // Traduction de toutes les langues en une seule requête batch (parallèle)
           try {
             const res = await fetch("/api/translate", {
               method: "POST",
@@ -372,11 +383,10 @@ async function startWebSpeechFallback(
               }
             }
           } catch {
-            // API de traduction indisponible — afficher la transcription source
             for (const lang of targets) callbacks.onFinal(lang, transcript)
           }
         } else {
-          // Partial: show source transcript while translation is pending
+          // Partiel : afficher la transcription source pendant que la traduction arrive
           for (const lang of targets) callbacks.onPartial(lang, transcript)
         }
       }
@@ -387,12 +397,12 @@ async function startWebSpeechFallback(
       if (event.error === "not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
-      // "no-speech" is non-fatal — recognition auto-restarts via onend
     }
 
     wsr.onend = () => {
-      // Auto-restart to keep recognition continuous (Web Speech API stops on silence)
+      // Redémarrage continu — reset de l'index pour la nouvelle session
       if (_wsrActive && _wsr === wsr) {
+        lastProcessedFinalIdx = -1
         try { wsr.start() } catch {}
       }
     }
