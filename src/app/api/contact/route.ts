@@ -7,6 +7,21 @@ function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   return apiKey ? new Resend(apiKey) : null
 }
+
+/** Échappe les caractères spéciaux HTML pour éviter les emails cassés */
+function esc(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+/** Convertit les sauts de ligne en <br> pour l'affichage HTML */
+function nl2br(str: string): string {
+  return esc(str).replace(/\n/g, "<br>")
+}
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000
 const RATE_LIMIT_MAX_REQUESTS = 5
 const contactRateLimit = new Map<string, number[]>()
@@ -72,15 +87,33 @@ export async function POST(request: Request) {
     const subjectName = company ? company : name
 
     const { data, error } = await resend.emails.send({
-      from: fromAddress,
-      to: [toAddress],
-      replyTo: email,
-      subject: "[Contact] " + subjectName + " - Instant Talk",
-      html: "<p><strong>Nom :</strong> " + name +
-            "</p><p><strong>Entreprise :</strong> " + (company || "-") +
-            "</p><p><strong>Email :</strong> " + email +
-            "</p><p><strong>Message :</strong><br/>" + message +
-            "</p>"
+      from:    fromAddress,
+      to:      [toAddress],
+      replyTo: [email],          // tableau requis en Resend v6
+      subject: `[Contact] ${esc(subjectName)} — Instant Talk`,
+      html: `<!DOCTYPE html>
+<html lang="fr"><body style="font-family:sans-serif;color:#0a2540;max-width:600px;margin:0 auto;padding:24px">
+  <h2 style="margin:0 0 20px;font-size:18px;border-bottom:2px solid #635bff;padding-bottom:10px">
+    Nouveau message — Instant Talk
+  </h2>
+  <table style="width:100%;border-collapse:collapse">
+    <tr><td style="padding:8px 0;font-weight:600;color:#555;width:130px">Nom</td>
+        <td style="padding:8px 0">${esc(name)}</td></tr>
+    <tr><td style="padding:8px 0;font-weight:600;color:#555">Entreprise</td>
+        <td style="padding:8px 0">${esc(company || "—")}</td></tr>
+    <tr><td style="padding:8px 0;font-weight:600;color:#555">Email</td>
+        <td style="padding:8px 0"><a href="mailto:${esc(email)}" style="color:#635bff">${esc(email)}</a></td></tr>
+  </table>
+  <div style="margin-top:20px">
+    <div style="font-weight:600;color:#555;margin-bottom:8px">Message</div>
+    <div style="background:#f6f9fc;border-left:3px solid #635bff;padding:14px 16px;border-radius:4px;line-height:1.7">
+      ${nl2br(message)}
+    </div>
+  </div>
+  <p style="margin-top:24px;font-size:12px;color:#999">
+    Envoyé depuis le formulaire contact de instant-talk.com
+  </p>
+</body></html>`,
     })
 
     if (error) {
