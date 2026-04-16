@@ -898,7 +898,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             {/* Left cluster: essential media controls */}
             <div className="flex gap-1 flex-wrap">
               <CtrlBtn label={isMicOn ? "Micro" : "Micro off"} active={!isMicOn} activeColor="#dc2626"
-                onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }}
+                onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; try { await tracksRef.current.audio.setEnabled(n) } catch {} setIsMicOn(n) }}
                 icon={isMicOn
                   ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
                   : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>}
@@ -952,7 +952,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           <div style={{ display: "flex", gap: "6px", justifyContent: "flex-start" }}>
             <CtrlBtn
               label={isMicOn ? "Micro" : "Micro off"} active={!isMicOn} activeColor="#dc2626"
-              onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; await tracksRef.current.audio.setEnabled(n); setIsMicOn(n) }}
+              onClick={async () => { if (!tracksRef.current) return; const n = !isMicOn; try { await tracksRef.current.audio.setEnabled(n) } catch {} setIsMicOn(n) }}
               icon={isMicOn
                 ? <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18 }}><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm-3.25 7.5a.75.75 0 01.75.75A5.5 5.5 0 0010 17.75a5.5 5.5 0 005.5-5.5.75.75 0 011.5 0A7 7 0 0110 19.25a7 7 0 01-7-7 .75.75 0 01.75-.75z"/></svg>
                 : <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 18, height: 18, color: "#fca5a5" }}><path d="M5.293 1.293a1 1 0 011.414 0l8 8a1 1 0 010 1.414l-8 8a1 1 0 01-1.414-1.414L12.586 10 5.293 2.707a1 1 0 010-1.414z"/></svg>}
