@@ -20,9 +20,12 @@ export default function ContactPage() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Capturer la référence au formulaire AVANT tout await
+    // (e.currentTarget devient null après le premier await dans React)
+    const formEl = e.currentTarget;
     setLoading(true);
     setStatus("idle");
-    const form = new FormData(e.currentTarget);
+    const form = new FormData(formEl);
     const payload = {
       name:    String(form.get("name")    ?? ""),
       company: String(form.get("company") ?? ""),
@@ -36,7 +39,7 @@ export default function ContactPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error();
-      (e.currentTarget as HTMLFormElement).reset();
+      formEl.reset();
       setStatus("success");
     } catch {
       setStatus("error");
