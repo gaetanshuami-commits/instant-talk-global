@@ -187,8 +187,8 @@ export async function GET(req: NextRequest) {
     caps: {
       maxParticipants: caps.maxParticipants,
       maxLanguages: caps.maxLanguages,
-      // Dev: no language restriction — bypasses cached planCapsRef stale value after HMR
-      allowedLangs: isDevSession ? null : caps.allowedLangs,
+      // null = toutes les 26 langues disponibles sans restriction de plan
+      allowedLangs: null,
       summaryLevel: caps.summaryLevel,
       prioritySupport: caps.prioritySupport,
     },
