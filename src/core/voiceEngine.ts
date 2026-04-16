@@ -406,13 +406,17 @@ async function startWebSpeechFallback(
 
   function createWSR() {
     const wsr = new SR()
-    wsr.lang             = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
-    // continuous: false = une session par énoncé → exactly ONE isFinal:true garanti
-    // continuous: true  = Chrome ne fire pas toujours isFinal:true → perte aléatoire
-    wsr.continuous       = false
-    wsr.interimResults   = true
-    wsr.maxAlternatives  = 1
+    wsr.lang            = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
+    // continuous:true → pas de redémarrage entre phrases, isFinal par phrase
+    wsr.continuous      = true
+    wsr.interimResults  = true
+    wsr.maxAlternatives = 1
     _wsr = wsr
+
+    // Debounce : traduit le texte (affichage seulement) pendant la parole
+    // si l'utilisateur marque une pause de 300ms — sans attendre isFinal
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let lastDebounceText = ""
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onresult = async (event: any) => {
@@ -421,19 +425,41 @@ async function startWebSpeechFallback(
         const transcript: string = result[0].transcript.trim()
         if (!transcript) continue
 
-        // Partiel : afficher le texte EN TEMPS RÉEL pendant la parole (0 ms délai)
         if (!result.isFinal) {
+          // 1. Source visible en temps réel (0 ms)
           for (const lang of targets) callbacks.onPartial(lang, transcript)
+
+          // 2. Traduction textuelle en avance : si pause de 300ms pendant la parole
+          if (transcript !== lastDebounceText) {
+            lastDebounceText = transcript
+            if (debounceTimer) clearTimeout(debounceTimer)
+            debounceTimer = setTimeout(() => {
+              debounceTimer = null
+              if (!_wsrActive) return
+              void fetch("/api/translate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: transcript, targetLangs: targets }),
+              }).then(r => r.ok ? r.json() : null).then(data => {
+                if (!data || !_wsrActive) return
+                const bt: Record<string, string> = data.translations ?? {}
+                for (const lang of targets) callbacks.onPartial(lang, bt[lang] ?? transcript)
+              }).catch(() => {})
+            }, 300)
+          }
           continue
         }
 
-        // Protection anti-replay : même texte dans les 2s = doublon Chrome → skip
+        // isFinal : annuler le debounce, traduire définitivement + TTS
+        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+        lastDebounceText = ""
+
+        // Protection anti-replay
         const now = Date.now()
         if (transcript === lastFinalText && now - lastFinalAt < 2000) continue
         lastFinalText = transcript
         lastFinalAt   = now
 
-        // Traduction de toutes les langues en une seule requête batch (parallèle)
         try {
           const res = await fetch("/api/translate", {
             method: "POST",
@@ -445,10 +471,7 @@ async function startWebSpeechFallback(
           for (const lang of targets) {
             const translated = batchTranslations[lang] ?? transcript
             callbacks.onFinal(lang, translated)
-            // TTS joué toujours — même seul dans la room (test) ou remote count temporairement 0
-            if (ttsLang && lang === ttsLang) {
-              enqueueTTS(translated, lang, voiceMap)
-            }
+            if (ttsLang && lang === ttsLang) enqueueTTS(translated, lang, voiceMap)
           }
         } catch {
           for (const lang of targets) callbacks.onFinal(lang, transcript)
@@ -462,31 +485,26 @@ async function startWebSpeechFallback(
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
-      // audio-capture, network, aborted → non-fatals, onend relance
     }
 
     wsr.onend = () => {
       if (!_wsrActive || _wsr !== wsr) return
-      // Essai immédiat, puis retries progressifs si le micro est occupé (Agora)
+      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+      // Retry avec backoff si micro occupé
       const tryStart = (attempt: number) => {
-        try {
-          wsr.start()
-        } catch {
-          if (attempt < 5) {
-            // Backoff : 200ms, 400ms, 600ms, 800ms, 1000ms
-            setTimeout(() => {
-              if (_wsrActive && _wsr === wsr) tryStart(attempt + 1)
-            }, 200 * attempt)
-          }
+        try { wsr.start() } catch {
+          if (attempt < 5) setTimeout(() => {
+            if (_wsrActive && _wsr === wsr) tryStart(attempt + 1)
+          }, 200 * attempt)
         }
       }
       tryStart(1)
     }
 
-    // Délai initial : laisser Agora finir de configurer le micro avant de démarrer WSR
+    // Délai initial : laisser Agora configurer le micro
     setTimeout(() => {
       if (_wsrActive && _wsr === wsr) {
-        try { wsr.start() } catch { /* onend gérera le retry */ }
+        try { wsr.start() } catch { /* onend gérera */ }
       }
     }, 400)
   }

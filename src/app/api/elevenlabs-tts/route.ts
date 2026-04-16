@@ -11,8 +11,8 @@ export const ELEVENLABS_SUPPORTED_LANGS = new Set([
 ])
 
 // Voix fixes — indépendantes de ELEVENLABS_VOICE_ID (réservé aux voix clonées)
-const VOICE_FEMALE = "EXAVITQu4vr4xnSDxMaL"  // Sarah — voix féminine stable
-const VOICE_MALE   = "TxGEqnHWrfWFTfGW9XjX"  // Josh  — voix masculine stable
+const VOICE_FEMALE = "21m00Tcm4TlvDq8ikWAM"  // Rachel — voix féminine (pre-made, fiable)
+const VOICE_MALE   = "TxGEqnHWrfWFTfGW9XjX"  // Josh   — voix masculine
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedVoiceId = voiceId ?? (gender === "male" ? VOICE_MALE : VOICE_FEMALE)
+    console.log("[ElevenLabs TTS] voice:", resolvedVoiceId, "gender:", gender, "lang:", lang)
     // Explicit language_code improves accuracy and avoids auto-detection overhead.
     // Only pass if it's a supported language (undefined = auto-detect for others).
     const languageCode = lang && ELEVENLABS_SUPPORTED_LANGS.has(String(lang)) ? String(lang) : undefined
