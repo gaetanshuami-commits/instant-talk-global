@@ -182,8 +182,7 @@ async function streamPCMAudio(
     for (let i = 0; i < samples; i++) ch[i] = view.getInt16(i * 2, true) / 32768
     const src = ctx.createBufferSource()
     src.buffer = buf
-    src.connect(dest)              // → Agora interpreter track (remote users entendent)
-    src.connect(ctx.destination)   // → haut-parleurs locaux (l'utilisateur local entend aussi)
+    src.connect(dest)   // → Agora interpreter track uniquement (remote entend, pas le speaker)
     const now     = ctx.currentTime
     const startAt = Math.max(now + 0.005, playbackEndTime)
     src.start(startAt)
@@ -449,7 +448,7 @@ async function startWebSpeechFallback(
           debounceTimer = setTimeout(() => {
             debounceTimer = null
             if (_wsrActive) prefetchTranslation(transcript)
-          }, 300)
+          }, 150)
           continue
         }
 
