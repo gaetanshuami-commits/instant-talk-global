@@ -5,7 +5,8 @@ export const fr = {
     start: "Créer une réunion",
     features: "Fonctionnalités",
     enterprise: "Entreprise",
-    login: "Se connecter"
+    login: "Se connecter",
+    book: "Réservation",
   },
   hero: {
     badge: "Première plateforme de traduction vocale en temps réel",

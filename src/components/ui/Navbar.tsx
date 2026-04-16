@@ -41,8 +41,9 @@ export function Navbar() {
         {/* Desktop nav */}
         <nav className="hidden items-center gap-1 lg:flex">
           {[
-            { href: "/pricing", label: t("nav.pricing") },
-            { href: "/contact", label: t("nav.contact") },
+            { href: "/pricing",              label: t("nav.pricing") },
+            { href: "/dashboard/meetings",   label: t("nav.book")    },
+            { href: "/contact",              label: t("nav.contact") },
           ].map(({ href, label }) => (
             <Link
               key={href}
@@ -92,8 +93,9 @@ export function Navbar() {
         <div className="border-t border-slate-100 bg-white px-5 pb-4 pt-2 lg:hidden">
           <div className="flex flex-col gap-1">
             {[
-              { href: "/pricing", label: t("nav.pricing") },
-              { href: "/contact", label: t("nav.contact") },
+              { href: "/pricing",            label: t("nav.pricing") },
+              { href: "/dashboard/meetings", label: t("nav.book")    },
+              { href: "/contact",            label: t("nav.contact") },
             ].map(({ href, label }) => (
               <Link
                 key={href}

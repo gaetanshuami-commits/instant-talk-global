@@ -58,6 +58,7 @@ const SOURCE = {
     features: "Fonctionnalités",
     enterprise: "Entreprise",
     login: "Se connecter",
+    book: "Réservation",
   },
   hero: {
     badge: "Première plateforme de traduction vocale en temps réel",
