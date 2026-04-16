@@ -33,14 +33,12 @@ export async function POST(req: NextRequest) {
     // Only pass if it's a supported language (undefined = auto-detect for others).
     const languageCode = lang && ELEVENLABS_SUPPORTED_LANGS.has(String(lang)) ? String(lang) : undefined
 
-    // eleven_flash_v2_5: ElevenLabs' real-time model, ~75 ms generation latency
-    // vs ~300-500 ms for eleven_multilingual_v2. Same voice IDs, same 32 languages
-    // (Swahili/Lingala still fall back to Azure in voiceEngine). optimize_streaming_latency=4
-    // + flash model = first audio bytes in ~75–120 ms after API call.
-    // mp3_22050_32 keeps bandwidth minimal for low-latency delivery over Agora.
+    // eleven_flash_v2_5 + pcm_16000 : premier chunk audio en ~75-120 ms.
+    // PCM 16-bit little-endian mono 16 kHz = pas de décodage MP3 côté client,
+    // chaque chunk est joué dès son arrivée → latence voix réduite de ~300 ms.
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}/stream` +
-      `?optimize_streaming_latency=4&output_format=mp3_22050_32`,
+      `?optimize_streaming_latency=4&output_format=pcm_16000`,
       {
         method: "POST",
         headers: {

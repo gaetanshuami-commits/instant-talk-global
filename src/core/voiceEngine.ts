@@ -133,6 +133,10 @@ export function setTTSProvider(provider: "azure" | "elevenlabs"): void {
 export function getTTSProvider(): "azure" | "elevenlabs" {
   return _ttsProvider
 }
+/** Mise à jour instantanée du genre TTS — sans redémarrer la reconnaissance vocale. */
+export function setTTSGender(gender: VoiceGender): void {
+  _ttsGenderGlobal = gender
+}
 
 // ─── Cloned voice — set once after ElevenLabs instant cloning ────────────────
 let _clonedVoiceId: string | null = null
@@ -149,8 +153,66 @@ const ELEVENLABS_UNSUPPORTED = new Set(["sw", "ln", "th"])
 
 // ─── ElevenLabs TTS ───────────────────────────────────────────────────────────
 
+// ─── PCM streaming — joue les chunks audio dès leur arrivée ─────────────────
+// ElevenLabs pcm_16000 = PCM 16-bit little-endian mono 16 kHz, sans en-tête.
+// Chaque chunk (~2-5 KB) représente ~80-200 ms d'audio jouable immédiatement.
+// Réduit la latence TTS de ~300-500 ms (attente MP3 complet) à ~80-120 ms.
+
+async function streamPCMAudio(
+  stream: ReadableStream<Uint8Array>,
+  sampleRate: number,
+  signal: AbortSignal
+): Promise<void> {
+  if (!ttsCtx) getTTSMediaStream()
+  const ctx  = ttsCtx!
+  const dest = ttsDestNode!
+  if (ctx.state === "suspended") await ctx.resume()
+
+  const reader = stream.getReader()
+  // Jouer par blocs de 80 ms minimum pour éviter les craquements
+  const MIN_BYTES = Math.floor(sampleRate * 0.08) * 2
+  let pending = new Uint8Array(0)
+
+  function playChunk(data: Uint8Array): void {
+    const samples = Math.floor(data.length / 2)
+    if (samples < 1) return
+    const buf  = ctx.createBuffer(1, samples, sampleRate)
+    const ch   = buf.getChannelData(0)
+    const view = new DataView(data.buffer, data.byteOffset, samples * 2)
+    for (let i = 0; i < samples; i++) ch[i] = view.getInt16(i * 2, true) / 32768
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(dest)
+    const now     = ctx.currentTime
+    const startAt = Math.max(now + 0.005, playbackEndTime)
+    src.start(startAt)
+    playbackEndTime = startAt + buf.duration
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (signal.aborted) { reader.cancel(); return }
+      if (done) break
+      if (value?.length) {
+        const merged = new Uint8Array(pending.length + value.length)
+        merged.set(pending)
+        merged.set(value, pending.length)
+        pending = merged
+        while (pending.length >= MIN_BYTES) {
+          playChunk(pending.slice(0, MIN_BYTES))
+          pending = pending.slice(MIN_BYTES)
+        }
+      }
+    }
+    // Vider le reste (aligner sur 2 octets = 1 sample Int16)
+    if (!signal.aborted && pending.length >= 2) {
+      playChunk(pending.slice(0, pending.length & ~1))
+    }
+  } catch { reader.cancel() }
+}
+
 async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
-  // Abort any previous in-flight EL request (new sentence interrupts the old one)
   _elAbort?.abort()
   const ctrl = new AbortController()
   _elAbort = ctrl
@@ -159,8 +221,6 @@ async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
     const res = await fetch("/api/elevenlabs-tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Pass lang so the route can supply language_code to ElevenLabs for
-      // better accuracy (avoids auto-detection overhead).
       body: JSON.stringify({
         text,
         lang,
@@ -170,17 +230,11 @@ async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
       signal: ctrl.signal,
     })
     if (!res.ok) throw new Error(`ElevenLabs ${res.status}`)
-    const arrayBuffer = await res.arrayBuffer()
-    // Only schedule if this request was not aborted while waiting for the response
-    if (!ctrl.signal.aborted && arrayBuffer.byteLength > 0) void scheduleAudio(arrayBuffer)
+    if (!res.body) throw new Error("No response stream")
+    await streamPCMAudio(res.body, 16000, ctrl.signal)
   } catch (err) {
-    // AbortError = intentionally cancelled — not an error
     if (err instanceof DOMException && err.name === "AbortError") return
-    // Fallback to Azure TTS — only if SDK is loaded (avoids null crash on race)
-    if (_sdk) {
-      const voiceMap = _ttsGenderGlobal === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
-      await speakWithAzure(text, lang, voiceMap)
-    }
+    // Silencieux — Azure TTS retiré (clé non configurée)
   } finally {
     if (_elAbort === ctrl) _elAbort = null
   }
@@ -358,17 +412,17 @@ async function startWebSpeechFallback(
         const transcript: string = result[0].transcript.trim()
         if (!transcript) continue
 
-        if (!result.isFinal) {
-          // Partiel : afficher la transcription source en attendant la traduction
-          for (const lang of targets) callbacks.onPartial(lang, transcript)
-          continue
-        }
+        if (!result.isFinal) continue  // pas de partiel pendant la prise de parole
 
         // Protection anti-replay : même texte dans les 2s = doublon Chrome → skip
         const now = Date.now()
         if (transcript === lastFinalText && now - lastFinalAt < 2000) continue
         lastFinalText = transcript
         lastFinalAt   = now
+
+        // Afficher la source IMMÉDIATEMENT (0 ms de latence perçue côté texte)
+        // La traduction remplacera ce texte dès qu'elle arrive (~200-400 ms après)
+        for (const lang of targets) callbacks.onPartial(lang, transcript)
 
         // Traduction de toutes les langues en une seule requête batch (parallèle)
         try {

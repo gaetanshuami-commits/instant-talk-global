@@ -645,9 +645,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     await ve.startTranslation(
       src, [tgt],
       {
-        // onPartial supprimé côté sous-titre cible : afficher uniquement la
-        // traduction finale évite la perception de "doublon" (source→cible).
-        onPartial:  () => { /* reconnaissance en cours — pas de sous-titre source */ },
+        // Affiche la source immédiatement (0 ms) ; la traduction remplace dès son arrivée.
+        onPartial:  (lang, text) => showSubtitle(lang, text, false),
         onFinal:    (lang, text) => showSubtitle(lang, text, true),
         onFallback: () => setIsFallbackActive(true),
         onError:   (err) => {
@@ -693,7 +692,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }
   }, [isTranslating, sourceLang, targetLang, voiceGender, startTrans])
 
-  // Restart quand la langue/genre change en cours de session.
+  // Restart quand la LANGUE change en cours de session (voix gérée séparément).
   // 150 ms de debounce : évite les appels en rafale sur changements rapides.
   useEffect(() => {
     if (!isTranslatingRef.current) return
@@ -717,7 +716,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }, 150)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceLang, targetLang, voiceGender])
+  }, [sourceLang, targetLang])
+
+  // Changement de genre vocal : mise à jour instantanée sans couper la reconnaissance.
+  useEffect(() => {
+    if (!isTranslatingRef.current) return
+    void getVE().then(ve => ve.setTTSGender(voiceGender))
+  }, [voiceGender])
 
   // ─── Layout ──────────────────────────────────────────────────────────────────
 
