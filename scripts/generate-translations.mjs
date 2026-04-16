@@ -409,11 +409,16 @@ const LANGUAGES = {
   cs: "CS",
   ro: "RO",
   hu: "HU",
+  bg: "BG",   // Bulgare — supporté DeepL
+  da: "DA",   // Danois — supporté DeepL
+  fi: "FI",   // Finnois — supporté DeepL
+  sk: "SK",   // Slovaque — supporté DeepL
+  no: "NB",   // Norvégien Bokmål — supporté DeepL (code NB)
+  vi: "VI",   // Vietnamien — supporté DeepL
   // Not supported by DeepL — English fallback will be embedded
   hi: null,
   sw: null,
   th: null,
-  vi: null,
 };
 
 // ── Flatten nested object to { "section.key": value } ───────────────────────
