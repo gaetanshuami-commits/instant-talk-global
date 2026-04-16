@@ -683,11 +683,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }
   }, [isTranslating, sourceLang, targetLang, voiceGender, startTrans])
 
-  // Restart with guard when lang/gender changes mid-session.
-  // 600 ms debounce: prevents rapid language-switch from hammering Azure STT
-  // with back-to-back WebSocket opens that trigger rate-limit quota errors.
-  // Uses isTranslatingRef (not the closed-over isTranslating) so that a Stop()
-  // during the 600 ms window is correctly honoured — fixes "button non fonctionnel".
+  // Restart quand la langue/genre change en cours de session.
+  // 150 ms de debounce : évite les appels en rafale sur changements rapides.
   useEffect(() => {
     if (!isTranslatingRef.current) return
     const seq = ++restartSeq.current
@@ -703,7 +700,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         console.error("[Translation restart]", err)
         setIsTranslating(false)
       }
-    }, 600)
+    }, 150)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceLang, targetLang, voiceGender])

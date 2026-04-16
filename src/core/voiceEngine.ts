@@ -205,12 +205,11 @@ async function speakWithAzure(
     if (_azureSynth) { try { _azureSynth.close() } catch {} }
     const cfg = sdk.SpeechConfig.fromAuthorizationToken(azureToken, azureRegion)
     cfg.speechSynthesisVoiceName = voice
-    // PullAudioOutputStream : récupère les données audio SANS jouer localement.
-    // null AudioConfig = lecture sur les haut-parleurs du navigateur (bug audio local).
-    const pullStream = sdk.AudioOutputStream.createPullStream()
+    // null AudioConfig : dans le SDK 1.49, le navigateur retourne l'audio
+    // exclusivement via result.audioData — pas de lecture sur les haut-parleurs.
     _azureSynth = new sdk.SpeechSynthesizer(
       cfg,
-      sdk.AudioConfig.fromStreamOutput(pullStream)
+      null as unknown as InstanceType<typeof sdk.AudioConfig>
     )
     _azureSynthVoice = voice
   }
@@ -337,57 +336,59 @@ async function startWebSpeechFallback(
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
   _wsrActive = true
 
+  // Timestamp du dernier résultat final — protection anti-replay sur 2s
+  // sans bloquer les phrases identiques prononcées légitimement plus tard.
+  let lastFinalText = ""
+  let lastFinalAt   = 0
+
   function createWSR() {
     const wsr = new SR()
-    wsr.lang       = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
-    wsr.continuous = true
-    wsr.interimResults = true
-    wsr.maxAlternatives = 1
+    wsr.lang             = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
+    // continuous: false = une session par énoncé → exactly ONE isFinal:true garanti
+    // continuous: true  = Chrome ne fire pas toujours isFinal:true → perte aléatoire
+    wsr.continuous       = false
+    wsr.interimResults   = true
+    wsr.maxAlternatives  = 1
     _wsr = wsr
-
-    // Double protection : index + contenu.
-    // lastProcessedFinalIdx remis à -1 à chaque restart (onend).
-    // lastTranslatedText bloque les doublons de contenu que Chrome peut rejouer.
-    let lastProcessedFinalIdx = -1
-    let lastTranslatedText    = ""
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onresult = async (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result    = event.results[i]
+        const result     = event.results[i]
         const transcript: string = result[0].transcript.trim()
         if (!transcript) continue
 
-        if (result.isFinal) {
-          // Saut si déjà traité (même index OU même texte)
-          if (i <= lastProcessedFinalIdx) continue
-          if (transcript === lastTranslatedText) continue
-          lastProcessedFinalIdx = i
-          lastTranslatedText    = transcript
-
-          // Traduction de toutes les langues en une seule requête batch (parallèle)
-          try {
-            const res = await fetch("/api/translate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: transcript, targetLangs: targets }),
-            })
-            const data = await res.json()
-            const batchTranslations: Record<string, string> = data.translations ?? {}
-            for (const lang of targets) {
-              const translated = batchTranslations[lang] ?? transcript
-              callbacks.onFinal(lang, translated)
-              if (ttsLang && lang === ttsLang) {
-                const rc = getRemoteCount ? getRemoteCount() : 1
-                if (rc > 0) enqueueTTS(translated, lang, voiceMap)
-              }
-            }
-          } catch {
-            for (const lang of targets) callbacks.onFinal(lang, transcript)
-          }
-        } else {
-          // Partiel : afficher la transcription source pendant que la traduction arrive
+        if (!result.isFinal) {
+          // Partiel : afficher la transcription source en attendant la traduction
           for (const lang of targets) callbacks.onPartial(lang, transcript)
+          continue
+        }
+
+        // Protection anti-replay : même texte dans les 2s = doublon Chrome → skip
+        const now = Date.now()
+        if (transcript === lastFinalText && now - lastFinalAt < 2000) continue
+        lastFinalText = transcript
+        lastFinalAt   = now
+
+        // Traduction de toutes les langues en une seule requête batch (parallèle)
+        try {
+          const res = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: transcript, targetLangs: targets }),
+          })
+          const data = await res.json()
+          const batchTranslations: Record<string, string> = data.translations ?? {}
+          for (const lang of targets) {
+            const translated = batchTranslations[lang] ?? transcript
+            callbacks.onFinal(lang, translated)
+            if (ttsLang && lang === ttsLang) {
+              const rc = getRemoteCount ? getRemoteCount() : 1
+              if (rc > 0) enqueueTTS(translated, lang, voiceMap)
+            }
+          }
+        } catch {
+          for (const lang of targets) callbacks.onFinal(lang, transcript)
         }
       }
     }
@@ -397,13 +398,13 @@ async function startWebSpeechFallback(
       if (event.error === "not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
+      // "no-speech", "aborted", "network" sont non-fatals → onend relance automatiquement
     }
 
     wsr.onend = () => {
-      // Redémarrage continu — reset de l'index pour la nouvelle session
+      // Relance immédiate pour la prochaine prise de parole
       if (_wsrActive && _wsr === wsr) {
-        lastProcessedFinalIdx = -1
-        try { wsr.start() } catch {}
+        try { wsr.start() } catch { /* mic busy → sera relancé au prochain onend */ }
       }
     }
 
