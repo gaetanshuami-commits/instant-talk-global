@@ -407,16 +407,32 @@ async function startWebSpeechFallback(
   function createWSR() {
     const wsr = new SR()
     wsr.lang            = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
-    // continuous:true → pas de redémarrage entre phrases, isFinal par phrase
-    wsr.continuous      = true
+    // continuous:false → UN SEUL isFinal par énoncé complet (pas de fragmentation)
+    wsr.continuous      = false
     wsr.interimResults  = true
     wsr.maxAlternatives = 1
     _wsr = wsr
 
-    // Debounce : traduit le texte (affichage seulement) pendant la parole
-    // si l'utilisateur marque une pause de 300ms — sans attendre isFinal
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    let lastDebounceText = ""
+    // ── Pré-chargement de traduction pendant la parole ────────────────────────
+    // Le debounce lance la requête de traduction après 300ms de pause,
+    // SANS afficher le résultat. Quand isFinal arrive, la traduction est déjà
+    // prête → affichage + TTS quasi-instantanés.
+    let debounceTimer:     ReturnType<typeof setTimeout> | null = null
+    let prefetchText    = ""                              // texte envoyé en pré-chargement
+    let prefetchCache:  Record<string, string> | null = null  // résultat mis en cache
+
+    const prefetchTranslation = (text: string) => {
+      if (text === prefetchText && prefetchCache) return  // déjà en cache
+      prefetchText  = text
+      prefetchCache = null
+      void fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, targetLangs: targets }),
+      }).then(r => r.ok ? r.json() : null).then(data => {
+        if (data && prefetchText === text) prefetchCache = data.translations ?? {}
+      }).catch(() => {})
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onresult = async (event: any) => {
@@ -426,55 +442,51 @@ async function startWebSpeechFallback(
         if (!transcript) continue
 
         if (!result.isFinal) {
-          // 1. Source visible en temps réel (0 ms)
+          // Source visible en temps réel (0 ms délai)
           for (const lang of targets) callbacks.onPartial(lang, transcript)
-
-          // 2. Traduction textuelle en avance : si pause de 300ms pendant la parole
-          if (transcript !== lastDebounceText) {
-            lastDebounceText = transcript
-            if (debounceTimer) clearTimeout(debounceTimer)
-            debounceTimer = setTimeout(() => {
-              debounceTimer = null
-              if (!_wsrActive) return
-              void fetch("/api/translate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: transcript, targetLangs: targets }),
-              }).then(r => r.ok ? r.json() : null).then(data => {
-                if (!data || !_wsrActive) return
-                const bt: Record<string, string> = data.translations ?? {}
-                for (const lang of targets) callbacks.onPartial(lang, bt[lang] ?? transcript)
-              }).catch(() => {})
-            }, 300)
-          }
+          // Pré-charger la traduction après 300ms de pause (silencieux)
+          if (debounceTimer) clearTimeout(debounceTimer)
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null
+            if (_wsrActive) prefetchTranslation(transcript)
+          }, 300)
           continue
         }
 
-        // isFinal : annuler le debounce, traduire définitivement + TTS
+        // ── isFinal : afficher + TTS une seule fois ───────────────────────────
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
-        lastDebounceText = ""
 
-        // Protection anti-replay
+        // Anti-replay
         const now = Date.now()
         if (transcript === lastFinalText && now - lastFinalAt < 2000) continue
         lastFinalText = transcript
         lastFinalAt   = now
 
-        try {
-          const res = await fetch("/api/translate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: transcript, targetLangs: targets }),
-          })
-          const data = await res.json()
-          const batchTranslations: Record<string, string> = data.translations ?? {}
-          for (const lang of targets) {
-            const translated = batchTranslations[lang] ?? transcript
-            callbacks.onFinal(lang, translated)
-            if (ttsLang && lang === ttsLang) enqueueTTS(translated, lang, voiceMap)
+        // Utiliser le cache pré-chargé si disponible → 0ms d'attente
+        // Sinon fetch immédiat (transcript court ou parole sans pause)
+        let batchTranslations: Record<string, string>
+        if (prefetchCache && prefetchText === transcript) {
+          batchTranslations = prefetchCache
+          prefetchCache = null
+        } else {
+          try {
+            const res = await fetch("/api/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: transcript, targetLangs: targets }),
+            })
+            const data = await res.json()
+            batchTranslations = data.translations ?? {}
+          } catch {
+            for (const lang of targets) callbacks.onFinal(lang, transcript)
+            continue
           }
-        } catch {
-          for (const lang of targets) callbacks.onFinal(lang, transcript)
+        }
+
+        for (const lang of targets) {
+          const translated = batchTranslations[lang] ?? transcript
+          callbacks.onFinal(lang, translated)
+          if (ttsLang && lang === ttsLang) enqueueTTS(translated, lang, voiceMap)
         }
       }
     }
@@ -485,12 +497,12 @@ async function startWebSpeechFallback(
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
+      // no-speech, aborted, network → non-fatals, onend relance
     }
 
     wsr.onend = () => {
       if (!_wsrActive || _wsr !== wsr) return
       if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
-      // Retry avec backoff si micro occupé
       const tryStart = (attempt: number) => {
         try { wsr.start() } catch {
           if (attempt < 5) setTimeout(() => {
