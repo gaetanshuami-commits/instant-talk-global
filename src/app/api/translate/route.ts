@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 
 // Languages DeepL does NOT support — skip straight to Gemini for these
+// (évite l'erreur 400 DeepL + le fallback Gemini avec latence additionnelle)
 const DEEPL_UNSUPPORTED = new Set([
   "sw", "ln", "sw-KE",    // Swahili, Lingala
   "fil", "ms", "id",       // Filipino, Malay, Indonesian

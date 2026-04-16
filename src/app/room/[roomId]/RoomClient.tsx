@@ -492,8 +492,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const showSubtitle = useCallback((lang: string, text: string, final: boolean) => {
     subtitleRef.current?.show(lang, text, final)
     if (final) {
-      // Accumulate transcript for AI Companion (last 120 lines)
-      setTranscript(prev => [...prev, `[${lang.toUpperCase()}] ${text}`].slice(-120))
+      // Dédup : ne pas ajouter si identique à la dernière entrée pour cette langue
+      setTranscript(prev => {
+        const entry = `[${lang.toUpperCase()}] ${text}`
+        if (prev.length > 0 && prev[prev.length - 1] === entry) return prev
+        return [...prev, entry].slice(-120)
+      })
     }
   }, [])
 
@@ -627,37 +631,39 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     src: string, tgt: string, gender: VoiceGender
   ) => {
     const ve = await getVE()
-    // Pre-resume AudioContext so first TTS plays without the suspended-context delay.
     void ve.warmAudioContext()
     await publishInterpreter()
+
+    // Couper le micro brut vers Agora — le correspondant entend UNIQUEMENT
+    // la voix traduite (interpreter track TTS), pas les deux simultanément.
+    if (tracksRef.current?.audio) {
+      try { tracksRef.current.audio.setMuted(true) } catch {}
+    }
+
     setTranslationError(null)
-    setIsFallbackActive(false)   // reset before each (re)start — cleared if Azure succeeds
+    setIsFallbackActive(false)
     await ve.startTranslation(
       src, [tgt],
       {
-        onPartial:  (lang, text) => showSubtitle(lang, text, false),
+        // onPartial supprimé côté sous-titre cible : afficher uniquement la
+        // traduction finale évite la perception de "doublon" (source→cible).
+        onPartial:  () => { /* reconnaissance en cours — pas de sous-titre source */ },
         onFinal:    (lang, text) => showSubtitle(lang, text, true),
         onFallback: () => setIsFallbackActive(true),
         onError:   (err) => {
           console.error("[VoiceEngine]", err)
-          // Auth errors are fatal and must be surfaced to the user.
-          // Quota-exceeded errors are handled transparently by the Web Speech API
-          // fallback inside voiceEngine — only surface them if the fallback also fails.
-          const isFatal = /authentication error|authentication failed|401|403|unauthorized|non disponible|not available/i.test(err)
+          const isFatal = /authentication error|401|403|unauthorized|non disponible|not available/i.test(err)
           if (isFatal) {
             setIsTranslating(false)
             subtitleRef.current?.reset()
-            setTranslationError(
-              "Reconnaissance vocale non disponible. Utilisez Chrome ou Edge."
-            )
+            setTranslationError("Reconnaissance vocale non disponible. Utilisez Chrome ou Edge.")
           }
         },
       },
       tgt,
       gender,
       () => remoteUsersRef.current.length,
-      // Dev: bypass plan restriction client-side too (planCapsRef may be stale after HMR)
-      process.env.NODE_ENV === "development" ? null : (planCapsRef.current?.allowedLangs ?? null)
+      null  // aucune restriction de langue
     )
   }, [publishInterpreter, showSubtitle])
   // Keep ref current — allows the join useEffect to call startTrans without TDZ issue
@@ -667,6 +673,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
+      // Restaurer le micro brut quand la traduction s'arrête
+      if (tracksRef.current?.audio) {
+        try { tracksRef.current.audio.setMuted(false) } catch {}
+      }
       setIsTranslating(false)
       setTranslationError(null)
       setIsFallbackActive(false)
@@ -692,6 +702,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       if (seq !== restartSeq.current) return
       const ve = await getVE()
       await ve.stopTranslation()
+      // Remettre le micro en clair pendant le redémarrage
+      if (tracksRef.current?.audio) {
+        try { tracksRef.current.audio.setMuted(false) } catch {}
+      }
       if (seq !== restartSeq.current) return
       try {
         await startTrans(sourceLang, targetLang, voiceGender)
