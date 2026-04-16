@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
 // ── Load .env.local if no env var set ───────────────────────────────────────
-if (!process.env.DEEPL_API_KEY) {
+if (!process.env.DEEPL_API_KEY || !process.env.GEMINI_API_KEY) {
   try {
     const env = readFileSync(join(ROOT, ".env.local"), "utf8");
     for (const line of env.split("\n")) {
@@ -30,9 +30,14 @@ if (!process.env.DEEPL_API_KEY) {
   } catch {}
 }
 
-const DEEPL_KEY = process.env.DEEPL_API_KEY;
+const DEEPL_KEY  = process.env.DEEPL_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 if (!DEEPL_KEY) {
   console.error("❌  DEEPL_API_KEY is not set.");
+  process.exit(1);
+}
+if (!GEMINI_KEY) {
+  console.error("❌  GEMINI_API_KEY is not set.");
   process.exit(1);
 }
 
@@ -415,10 +420,13 @@ const LANGUAGES = {
   sk: "SK",   // Slovaque — supporté DeepL
   no: "NB",   // Norvégien Bokmål — supporté DeepL (code NB)
   vi: "VI",   // Vietnamien — supporté DeepL
-  // Not supported by DeepL — English fallback will be embedded
-  hi: null,
-  sw: null,
-  th: null,
+};
+
+// ── Languages translated via Gemini (not supported by DeepL) ─────────────────
+const GEMINI_LANGUAGES = {
+  hi: "Hindi",
+  sw: "Swahili",
+  th: "Thai",
 };
 
 // ── Flatten nested object to { "section.key": value } ───────────────────────
@@ -488,6 +496,87 @@ async function translateBatch(texts, targetLang, retries = 3) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── Translate a batch of texts via Gemini (for DeepL-unsupported languages) ──
+async function translateWithGemini(texts, targetLangName, retries = 3) {
+  const prompt = `You are a professional translator. Translate each of the following French UI strings into ${targetLangName}.
+Rules:
+- Return ONLY a JSON array of translated strings, in the same order as the input.
+- Keep placeholders like {price} exactly as-is.
+- Keep numbers, percentages, and symbols unchanged.
+- Keep brand names (Instant Talk, DeepL, IA) unchanged.
+- Do not add explanations or extra text.
+
+Input JSON array:
+${JSON.stringify(texts)}
+
+Return ONLY the translated JSON array:`;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+          }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.text();
+        if (res.status === 429 && attempt < retries) {
+          console.warn(`    ⚠️  Gemini rate limited, waiting 10s... (attempt ${attempt})`);
+          await sleep(10000);
+          continue;
+        }
+        throw new Error(`Gemini ${res.status}: ${err}`);
+      }
+      const data = await res.json();
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      // Extract JSON array from response
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error(`Gemini bad response: ${raw.slice(0, 200)}`);
+      const parsed = JSON.parse(match[0]);
+      if (!Array.isArray(parsed) || parsed.length !== texts.length) {
+        throw new Error(`Gemini array length mismatch: got ${parsed.length}, expected ${texts.length}`);
+      }
+      return parsed.map(String);
+    } catch (err) {
+      if (attempt === retries) throw err;
+      await sleep(3000 * attempt);
+    }
+  }
+}
+
+// ── Translate all keys for a language using Gemini ──────────────────────────
+async function translateLanguageGemini(flatSource, langName, langCode) {
+  const entries = Object.entries(flatSource);
+  const toTranslate = entries.filter(([k]) => !SKIP_KEYS.has(k));
+  const toKeep     = entries.filter(([k]) =>  SKIP_KEYS.has(k));
+
+  const keys   = toTranslate.map(([k]) => k);
+  const values = toTranslate.map(([, v]) => v);
+
+  const BATCH = 40; // smaller batches for Gemini reliability
+  const translated = [];
+
+  for (let i = 0; i < values.length; i += BATCH) {
+    const batch = values.slice(i, i + BATCH);
+    process.stdout.write(`    chunk ${Math.floor(i / BATCH) + 1}/${Math.ceil(values.length / BATCH)}... `);
+    const results = await translateWithGemini(batch, langName);
+    translated.push(...results);
+    console.log("✓");
+    if (i + BATCH < values.length) await sleep(500);
+  }
+
+  const result = {};
+  keys.forEach((k, i) => { result[k] = translated[i]; });
+  toKeep.forEach(([k, v]) => { result[k] = v; });
+  return result;
 }
 
 // ── Translate all keys for a language ───────────────────────────────────────
@@ -590,12 +679,15 @@ async function main() {
     }
   }
 
-  // Fill non-DeepL languages with English
-  if (!enFlat) {
-    console.warn("⚠️  English translation not available, using French as fallback for non-DeepL languages.");
-  }
-  for (const [langCode, deeplCode] of Object.entries(LANGUAGES)) {
-    if (deeplCode === null && results[langCode] === null) {
+  // Translate Gemini languages (hi, sw, th)
+  for (const [langCode, langName] of Object.entries(GEMINI_LANGUAGES)) {
+    console.log(`🤖  Translating → ${langCode.toUpperCase()} (${langName}) via Gemini...`);
+    try {
+      const flat = await translateLanguageGemini(flatSource, langName, langCode);
+      results[langCode] = unflatten(flat);
+      console.log(`   ✅  Done\n`);
+    } catch (err) {
+      console.error(`   ❌  Failed: ${err.message}. Using English fallback for ${langCode}.\n`);
       results[langCode] = enFlat ? unflatten(enFlat) : SOURCE;
     }
   }
