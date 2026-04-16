@@ -634,10 +634,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     await ve.warmAudioContext()   // awaité : AudioContext actif avant le premier TTS
     await publishInterpreter()
 
-    // Désactiver le micro Agora : libère le hardware mic pour Web Speech API
-    // (setMuted garde Agora en capture → AEC mobile bloque WSR → no-speech)
-    if (tracksRef.current?.audio) {
-      try { await tracksRef.current.audio.setEnabled(false) } catch {}
+    // Fermer complètement le track audio Agora pour libérer le hardware mic.
+    // setEnabled(false) seul garde le pipeline WebRTC actif → sur Android,
+    // l'AEC hardware reste en mode VOICE_COMMUNICATION → WSR capte du silence.
+    // close() libère vraiment le mic → WSR obtient l'audio propre.
+    if (tracksRef.current?.audio && clientRef.current) {
+      try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
+      try { tracksRef.current.audio.close() } catch {}
     }
 
     setTranslationError(null)
@@ -674,9 +677,18 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
-      // Restaurer le micro Agora quand la traduction s'arrête
-      if (tracksRef.current?.audio) {
-        try { await tracksRef.current.audio.setEnabled(true) } catch {}
+      // Recréer et republier le track audio Agora (il a été fermé au démarrage)
+      if (tracksRef.current && clientRef.current) {
+        try {
+          const na = await AgoraRTC.createMicrophoneAudioTrack({
+            AEC: true, AGC: true,
+            encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
+          })
+          tracksRef.current = { ...tracksRef.current, audio: na }
+          if (clientRef.current.connectionState === "CONNECTED") {
+            await clientRef.current.publish(na)
+          }
+        } catch (err) { console.warn("[Mic recreate]", err) }
       }
       setIsTranslating(false)
       setTranslationError(null)
@@ -703,10 +715,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       if (seq !== restartSeq.current) return
       const ve = await getVE()
       await ve.stopTranslation()
-      // Remettre le micro Agora pendant le redémarrage
-      if (tracksRef.current?.audio) {
-        try { await tracksRef.current.audio.setEnabled(true) } catch {}
-      }
+      // Le track audio est déjà fermé (startTrans l'a fermé).
+      // startTrans va le fermer à nouveau — pas besoin de recréer entre les deux.
       if (seq !== restartSeq.current) return
       try {
         await startTrans(sourceLang, targetLang, voiceGender)
