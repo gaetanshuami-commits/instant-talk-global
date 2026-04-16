@@ -412,17 +412,17 @@ async function startWebSpeechFallback(
         const transcript: string = result[0].transcript.trim()
         if (!transcript) continue
 
-        if (!result.isFinal) continue  // pas de partiel pendant la prise de parole
+        // Partiel : afficher le texte EN TEMPS RÉEL pendant la parole (0 ms délai)
+        if (!result.isFinal) {
+          for (const lang of targets) callbacks.onPartial(lang, transcript)
+          continue
+        }
 
         // Protection anti-replay : même texte dans les 2s = doublon Chrome → skip
         const now = Date.now()
         if (transcript === lastFinalText && now - lastFinalAt < 2000) continue
         lastFinalText = transcript
         lastFinalAt   = now
-
-        // Afficher la source IMMÉDIATEMENT (0 ms de latence perçue côté texte)
-        // La traduction remplacera ce texte dès qu'elle arrive (~200-400 ms après)
-        for (const lang of targets) callbacks.onPartial(lang, transcript)
 
         // Traduction de toutes les langues en une seule requête batch (parallèle)
         try {

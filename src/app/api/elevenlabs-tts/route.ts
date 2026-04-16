@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
         headers: {
           "xi-api-key":   apiKey,
           "Content-Type": "application/json",
-          Accept:         "audio/mpeg",
+          // Pas d'Accept header : laisser ElevenLabs servir le format demandé (pcm_16000)
         },
         body: JSON.stringify({
           text: cleanText,
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     // as ElevenLabs generates them, without waiting for the full audio file.
     return new NextResponse(response.body, {
       headers: {
-        "Content-Type":  "audio/mpeg",
+        "Content-Type":  "audio/pcm",
         "Cache-Control": "no-store",
       },
     })
