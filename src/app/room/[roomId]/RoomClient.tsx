@@ -634,10 +634,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     await ve.warmAudioContext()   // awaité : AudioContext actif avant le premier TTS
     await publishInterpreter()
 
-    // Couper le micro brut vers Agora — le correspondant entend UNIQUEMENT
-    // la voix traduite (interpreter track TTS), pas les deux simultanément.
+    // Désactiver le micro Agora : libère le hardware mic pour Web Speech API
+    // (setMuted garde Agora en capture → AEC mobile bloque WSR → no-speech)
     if (tracksRef.current?.audio) {
-      try { tracksRef.current.audio.setMuted(true) } catch {}
+      try { await tracksRef.current.audio.setEnabled(false) } catch {}
     }
 
     setTranslationError(null)
@@ -674,9 +674,9 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
-      // Restaurer le micro brut quand la traduction s'arrête
+      // Restaurer le micro Agora quand la traduction s'arrête
       if (tracksRef.current?.audio) {
-        try { tracksRef.current.audio.setMuted(false) } catch {}
+        try { await tracksRef.current.audio.setEnabled(true) } catch {}
       }
       setIsTranslating(false)
       setTranslationError(null)
@@ -703,9 +703,9 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       if (seq !== restartSeq.current) return
       const ve = await getVE()
       await ve.stopTranslation()
-      // Remettre le micro en clair pendant le redémarrage
+      // Remettre le micro Agora pendant le redémarrage
       if (tracksRef.current?.audio) {
-        try { tracksRef.current.audio.setMuted(false) } catch {}
+        try { await tracksRef.current.audio.setEnabled(true) } catch {}
       }
       if (seq !== restartSeq.current) return
       try {
