@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 
 type LanguageOption = {
   label: string
@@ -150,8 +151,9 @@ export default function LanguageSelector({
         </svg>
       </button>
 
-      {/* Dropdown — position: fixed pour ne jamais perturber les vidéos */}
-      {open && fixedPos && (
+      {/* Dropdown — portail sur document.body pour passer au-dessus de tout stacking context
+          (backdrop-filter du footer crée un stacking context qui confine position:fixed) */}
+      {open && fixedPos && typeof document !== "undefined" && createPortal(
         <div
           ref={dropRef}
           style={{
@@ -229,7 +231,8 @@ export default function LanguageSelector({
               )
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

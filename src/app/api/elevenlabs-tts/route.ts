@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 
 // Langues avec language_code explicite pour eleven_flash_v2_5 (qualité optimale)
-// Pour les langues hors liste (sw, ln) : pas de language_code → auto-detect ElevenLabs
+// sw, ln, th : pas de language_code → auto-detect ElevenLabs (génère quand même audio)
 export const ELEVENLABS_SUPPORTED_LANGS = new Set([
   "en", "fr", "de", "es", "it", "pt", "nl", "ar", "ja", "ko",
   "hi", "tr", "zh", "ru", "pl", "sv", "no", "da", "fi",
-  "cs", "sk", "hu", "ro", "bg", "el", "vi", "th",  // th supporté par flash v2.5
+  "cs", "sk", "hu", "ro", "bg", "el", "vi",
 ])
 
 // Premium multilingual voices
