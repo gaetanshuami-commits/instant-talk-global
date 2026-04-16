@@ -669,6 +669,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   startTransRef.current = startTrans
 
   const toggleTranslation = useCallback(async () => {
+    // Unlock AudioContext synchronously AVANT tout await — obligatoire sur iOS/Android
+    if (_ve) _ve.unlockAudioContextSync()
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()

@@ -10,9 +10,9 @@ export const ELEVENLABS_SUPPORTED_LANGS = new Set([
   "cs", "sk", "hu", "ro", "bg", "el", "vi",
 ])
 
-// Premium multilingual voices
-const VOICE_FEMALE = process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL" // Sarah
-const VOICE_MALE   = "TxGEqnHWrfWFTfGW9XjX"                                     // Josh
+// Voix fixes — indépendantes de ELEVENLABS_VOICE_ID (réservé aux voix clonées)
+const VOICE_FEMALE = "EXAVITQu4vr4xnSDxMaL"  // Sarah — voix féminine stable
+const VOICE_MALE   = "TxGEqnHWrfWFTfGW9XjX"  // Josh  — voix masculine stable
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,10 +53,10 @@ export async function POST(req: NextRequest) {
           // Omitted when undefined so EL falls back to auto-detect for edge cases.
           ...(languageCode ? { language_code: languageCode } : {}),
           voice_settings: {
-            stability:         0.45,
-            similarity_boost:  0.80,
-            style:             0.05,  // near-zero style = fastest generation path
-            use_speaker_boost: false, // speaker boost adds ~30 ms; off for real-time
+            stability:         0.75,  // haute stabilité = voix constante à chaque appel
+            similarity_boost:  0.85,
+            style:             0.0,   // style 0 = path le plus rapide
+            use_speaker_boost: false,
           },
         }),
       }

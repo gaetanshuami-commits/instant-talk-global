@@ -327,14 +327,22 @@ export async function warmupSDK(): Promise<void> {
   }
 }
 
-/** Pre-resume the AudioContext so the first TTS playback has no suspend delay. */
+/** Pre-resume the AudioContext so the first TTS playback has no suspend delay.
+ *  Sur mobile (iOS/Android) appeler cette fonction dans le gestionnaire de clic
+ *  avant tout await pour maintenir le contexte de geste utilisateur. */
+export function unlockAudioContextSync(): void {
+  try {
+    if (!ttsCtx) getTTSMediaStream()
+    // fire-and-forget : doit être appelé dans le call-stack synchrone du geste
+    if (ttsCtx?.state === "suspended") void ttsCtx.resume()
+  } catch { /* non-fatal */ }
+}
+
 export async function warmAudioContext(): Promise<void> {
   try {
     if (!ttsCtx) getTTSMediaStream()
     if (ttsCtx && ttsCtx.state === "suspended") await ttsCtx.resume()
-  } catch {
-    // Non-fatal
-  }
+  } catch { /* non-fatal */ }
 }
 
 // ─── Web Speech API fallback ──────────────────────────────────────────────────
@@ -452,13 +460,21 @@ async function startWebSpeechFallback(
       if (event.error === "not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
-      // "no-speech", "aborted", "network" sont non-fatals → onend relance automatiquement
+      // autres erreurs non-fatales : onend se charge du redémarrage
     }
 
     wsr.onend = () => {
-      // Relance immédiate pour la prochaine prise de parole
-      if (_wsrActive && _wsr === wsr) {
-        try { wsr.start() } catch { /* mic busy → sera relancé au prochain onend */ }
+      if (!_wsrActive || _wsr !== wsr) return
+      // Essai immédiat, puis retry avec délai si le micro est occupé (Agora)
+      try {
+        wsr.start()
+      } catch {
+        // Micro occupé — réessayer dans 300 ms
+        setTimeout(() => {
+          if (_wsrActive && _wsr === wsr) {
+            try { wsr.start() } catch { /* toujours occupé — prochain onend */ }
+          }
+        }, 300)
       }
     }
 
