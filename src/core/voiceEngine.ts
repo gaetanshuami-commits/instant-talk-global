@@ -441,9 +441,16 @@ async function startWebSpeechFallback(
         if (!transcript) continue
 
         if (!result.isFinal) {
-          // Source visible en temps réel (0 ms délai)
-          for (const lang of targets) callbacks.onPartial(lang, transcript)
-          // Pré-charger la traduction après 300ms de pause (silencieux)
+          // Bloquer les partiaux qui sont un écho du redémarrage WSR :
+          // après isFinal, la nouvelle session peut recapter la même phrase
+          // en partiel → écraserait la traduction affichée. On bloque
+          // si le texte est identique au dernier final et dans la fenêtre 2s.
+          const isRestartEcho = transcript === lastFinalText
+            && (Date.now() - lastFinalAt) < 2000
+          if (!isRestartEcho) {
+            for (const lang of targets) callbacks.onPartial(lang, transcript)
+          }
+          // Pré-charger la traduction après 150ms de pause (silencieux)
           if (debounceTimer) clearTimeout(debounceTimer)
           debounceTimer = setTimeout(() => {
             debounceTimer = null
@@ -455,9 +462,9 @@ async function startWebSpeechFallback(
         // ── isFinal : afficher + TTS une seule fois ───────────────────────────
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
 
-        // Anti-replay
+        // Anti-replay : même phrase dans les 3s = écho redémarrage → skip
         const now = Date.now()
-        if (transcript === lastFinalText && now - lastFinalAt < 2000) continue
+        if (transcript === lastFinalText && now - lastFinalAt < 3000) continue
         lastFinalText = transcript
         lastFinalAt   = now
 
