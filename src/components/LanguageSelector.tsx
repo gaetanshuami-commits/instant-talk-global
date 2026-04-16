@@ -42,7 +42,6 @@ type Props = {
   value: string
   onChange: (value: string) => void
   title?: string
-  /** Compact mode: smaller button for mobile control bar */
   compact?: boolean
 }
 
@@ -52,16 +51,21 @@ export default function LanguageSelector({
   title = "Langue",
   compact = false,
 }: Props) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [open, setOpen]       = useState(false)
+  const [fixedPos, setFixedPos] = useState<{ bottom: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
   const dropRef = useRef<HTMLDivElement | null>(null)
 
-  // Close on interaction outside — handles both mouse and touch
+  // Fermer au clic en dehors
   useEffect(() => {
+    if (!open) return
     function handleOutside(e: MouseEvent | TouchEvent) {
-      if (!rootRef.current) return
-      const target = "touches" in e ? e.touches[0]?.target : e.target
-      if (target && !rootRef.current.contains(target as Node)) {
+      const target = "touches" in e ? e.touches[0]?.target : (e.target as Node)
+      if (
+        target &&
+        !btnRef.current?.contains(target as Node) &&
+        !dropRef.current?.contains(target as Node)
+      ) {
         setOpen(false)
       }
     }
@@ -71,39 +75,45 @@ export default function LanguageSelector({
       document.removeEventListener("mousedown", handleOutside)
       document.removeEventListener("touchstart", handleOutside)
     }
-  }, [])
+  }, [open])
 
-  // Adjust dropdown horizontal position so it never overflows the viewport
+  // Ajustement horizontal pour rester dans le viewport
   useEffect(() => {
-    if (!open || !dropRef.current) return
+    if (!open || !dropRef.current || !fixedPos) return
     const drop = dropRef.current
-    // Reset to default (align right edge to trigger right edge)
-    drop.style.left  = ""
-    drop.style.right = "0"
-    // Measure after paint so getBoundingClientRect is accurate
     requestAnimationFrame(() => {
       if (!drop) return
       const rect = drop.getBoundingClientRect()
       const vpW  = window.innerWidth
-      if (rect.left < 8) {
-        drop.style.right = ""
-        drop.style.left  = "0"
-      } else if (rect.right > vpW - 8) {
-        drop.style.right = `${rect.right - (vpW - 8)}px`
-        drop.style.left  = ""
+      if (rect.right > vpW - 8) {
+        drop.style.left = `${Math.max(8, fixedPos.left - (rect.right - (vpW - 8)))}px`
       }
     })
-  }, [open])
+  }, [open, fixedPos])
+
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      // Positionne le dropdown au-dessus du bouton en coordonnées viewport
+      setFixedPos({
+        bottom: window.innerHeight - r.top + 8,
+        left:   r.left,
+      })
+    }
+    setOpen(prev => !prev)
+  }
 
   const current = LANGUAGES.find(l => l.value === value) ?? LANGUAGES[0]
 
   return (
-    <div ref={rootRef} style={{ position: "relative" }}>
-      {/* Trigger button */}
+    <div style={{ position: "relative" }}>
+      {/* Bouton déclencheur */}
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen(prev => !prev)}
+        onClick={handleToggle}
         aria-label={title}
+        aria-expanded={open}
         style={{
           display: "flex",
           alignItems: "center",
@@ -120,7 +130,6 @@ export default function LanguageSelector({
           whiteSpace: "nowrap",
           transition: "background 0.15s",
           maxWidth: compact ? "90px" : "130px",
-          // Eliminates 300 ms tap delay on mobile without disabling pinch-zoom
           touchAction: "manipulation",
         }}
       >
@@ -141,27 +150,26 @@ export default function LanguageSelector({
         </svg>
       </button>
 
-      {/* Dropdown */}
-      {open && (
+      {/* Dropdown — position: fixed pour ne jamais perturber les vidéos */}
+      {open && fixedPos && (
         <div
           ref={dropRef}
           style={{
-            position: "absolute",
-            bottom: "calc(100% + 6px)",
-            right: 0,
-            zIndex: 9999,
-            width: "200px",
+            position: "fixed",
+            bottom:   fixedPos.bottom,
+            left:     fixedPos.left,
+            zIndex:   99999,
+            width:    "200px",
             borderRadius: "16px",
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(10,12,26,0.97)",
-            boxShadow: "0 -8px 32px rgba(0,0,0,0.6)",
+            border:   "1px solid rgba(255,255,255,0.1)",
+            background:   "rgba(10,12,26,0.98)",
+            boxShadow:    "0 -8px 32px rgba(0,0,0,0.7)",
             backdropFilter: "blur(20px)",
             overflow: "hidden",
-            // Promote to own compositing layer — smoother rendering on mobile GPU
             willChange: "transform",
           }}
         >
-          {/* Header */}
+          {/* En-tête */}
           <div style={{
             padding: "10px 14px 8px",
             fontSize: "10px",
@@ -174,14 +182,11 @@ export default function LanguageSelector({
             {title}
           </div>
 
-          {/* Scrollable list — mobile-optimised */}
+          {/* Liste scrollable */}
           <div style={{
-            // Adapts to viewport so dropdown never exits the screen on short phones
-            maxHeight: "min(240px, 45vh)",
+            maxHeight: "min(260px, 50vh)",
             overflowY: "auto",
-            // Prevents scroll from propagating to the page behind the footer
             overscrollBehavior: "contain",
-            // Smooth momentum scroll on iOS Safari
             WebkitOverflowScrolling: "touch",
             padding: "6px",
           }}>
@@ -208,8 +213,7 @@ export default function LanguageSelector({
                     cursor: "pointer",
                     textAlign: "left",
                     transition: "background 0.1s",
-                    // 44px touch target meets WCAG 2.5.5 — prevents mis-taps on mobile
-                    minHeight: "44px",
+                    minHeight: "40px",
                     touchAction: "manipulation",
                   }}
                   onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)" }}

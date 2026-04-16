@@ -11,31 +11,46 @@ export default function VoiceSelector({
   onChange: (v: VoiceGender) => void
   compact?: boolean
 }) {
-  // Compact mode: single icon toggle (for mobile where space is tight)
+  // Compact mode: two mini buttons Femme/Homme (readable on mobile)
   if (compact) {
     return (
-      <button
-        type="button"
-        onClick={() => onChange(value === "female" ? "male" : "female")}
-        title={value === "female" ? "Voix féminine — cliquer pour masculin" : "Voix masculine — cliquer pour féminin"}
-        style={{
-          height: 36,
-          width: 36,
-          borderRadius: "10px",
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: value === "female" ? "rgba(236,72,153,0.18)" : "rgba(59,130,246,0.18)",
-          color: value === "female" ? "#f9a8d4" : "#93c5fd",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          fontSize: "17px",
-          flexShrink: 0,
-          lineHeight: 1,
-        }}
-      >
-        {value === "female" ? "♀" : "♂"}
-      </button>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "2px",
+        background: "rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: "10px",
+        padding: "2px",
+        flexShrink: 0,
+      }}>
+        <button
+          type="button"
+          onClick={() => onChange("female")}
+          title="Voix féminine"
+          style={{
+            height: 26, padding: "0 8px", borderRadius: "8px", border: "none",
+            background: value === "female" ? "linear-gradient(135deg,#ec4899,#db2777)" : "transparent",
+            color: value === "female" ? "white" : "rgba(255,255,255,0.45)",
+            fontWeight: 700, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
+            boxShadow: value === "female" ? "0 2px 8px rgba(236,72,153,0.4)" : "none",
+            touchAction: "manipulation",
+          }}
+        >♀ Femme</button>
+        <button
+          type="button"
+          onClick={() => onChange("male")}
+          title="Voix masculine"
+          style={{
+            height: 26, padding: "0 8px", borderRadius: "8px", border: "none",
+            background: value === "male" ? "linear-gradient(135deg,#3b82f6,#1d4ed8)" : "transparent",
+            color: value === "male" ? "white" : "rgba(255,255,255,0.45)",
+            fontWeight: 700, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
+            boxShadow: value === "male" ? "0 2px 8px rgba(59,130,246,0.4)" : "none",
+            touchAction: "manipulation",
+          }}
+        >♂ Homme</button>
+      </div>
     )
   }
 

@@ -683,12 +683,12 @@ async function drainTTSQueue(): Promise<void> {
   _ttsRunning = true
   while (_ttsQueue.length > 0) {
     const job = _ttsQueue.shift()!
-    cancelActiveSynth()  // interrupt previous Azure utterance if still running
-    if (_ttsProvider === "elevenlabs" && !ELEVENLABS_UNSUPPORTED.has(job.lang)) {
-      await speakWithElevenLabs(job.text, job.lang)
-    } else {
-      await speakWithAzure(job.text, job.lang, job.voiceMap)
-    }
+    cancelActiveSynth()
+    // ElevenLabs gère toutes les langues :
+    // - langues officiellement supportées : language_code envoyé pour qualité maximale
+    // - langues non listées (sw, ln) : auto-detect (pas de language_code) → voice quand même
+    // Azure TTS n'est plus utilisé (clé non configurée = silence systématique).
+    await speakWithElevenLabs(job.text, job.lang)
   }
   _ttsRunning = false
 }
