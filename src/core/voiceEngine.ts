@@ -182,7 +182,8 @@ async function streamPCMAudio(
     for (let i = 0; i < samples; i++) ch[i] = view.getInt16(i * 2, true) / 32768
     const src = ctx.createBufferSource()
     src.buffer = buf
-    src.connect(dest)
+    src.connect(dest)              // → Agora interpreter track (remote users entendent)
+    src.connect(ctx.destination)   // → haut-parleurs locaux (l'utilisateur local entend aussi)
     const now     = ctx.currentTime
     const startAt = Math.max(now + 0.005, playbackEndTime)
     src.start(startAt)
@@ -234,7 +235,7 @@ async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
     await streamPCMAudio(res.body, 16000, ctrl.signal)
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return
-    // Silencieux — Azure TTS retiré (clé non configurée)
+    console.error("[TTS] ElevenLabs error:", err)
   } finally {
     if (_elAbort === ctrl) _elAbort = null
   }
@@ -444,9 +445,9 @@ async function startWebSpeechFallback(
           for (const lang of targets) {
             const translated = batchTranslations[lang] ?? transcript
             callbacks.onFinal(lang, translated)
+            // TTS joué toujours — même seul dans la room (test) ou remote count temporairement 0
             if (ttsLang && lang === ttsLang) {
-              const rc = getRemoteCount ? getRemoteCount() : 1
-              if (rc > 0) enqueueTTS(translated, lang, voiceMap)
+              enqueueTTS(translated, lang, voiceMap)
             }
           }
         } catch {
@@ -457,28 +458,37 @@ async function startWebSpeechFallback(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onerror = (event: any) => {
-      if (event.error === "not-allowed") {
+      console.warn("[WSR] error:", event.error)
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
-      // autres erreurs non-fatales : onend se charge du redémarrage
+      // audio-capture, network, aborted → non-fatals, onend relance
     }
 
     wsr.onend = () => {
       if (!_wsrActive || _wsr !== wsr) return
-      // Essai immédiat, puis retry avec délai si le micro est occupé (Agora)
-      try {
-        wsr.start()
-      } catch {
-        // Micro occupé — réessayer dans 300 ms
-        setTimeout(() => {
-          if (_wsrActive && _wsr === wsr) {
-            try { wsr.start() } catch { /* toujours occupé — prochain onend */ }
+      // Essai immédiat, puis retries progressifs si le micro est occupé (Agora)
+      const tryStart = (attempt: number) => {
+        try {
+          wsr.start()
+        } catch {
+          if (attempt < 5) {
+            // Backoff : 200ms, 400ms, 600ms, 800ms, 1000ms
+            setTimeout(() => {
+              if (_wsrActive && _wsr === wsr) tryStart(attempt + 1)
+            }, 200 * attempt)
           }
-        }, 300)
+        }
       }
+      tryStart(1)
     }
 
-    wsr.start()
+    // Délai initial : laisser Agora finir de configurer le micro avant de démarrer WSR
+    setTimeout(() => {
+      if (_wsrActive && _wsr === wsr) {
+        try { wsr.start() } catch { /* onend gérera le retry */ }
+      }
+    }, 400)
   }
 
   createWSR()

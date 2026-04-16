@@ -631,7 +631,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     src: string, tgt: string, gender: VoiceGender
   ) => {
     const ve = await getVE()
-    void ve.warmAudioContext()
+    await ve.warmAudioContext()   // awaité : AudioContext actif avant le premier TTS
     await publishInterpreter()
 
     // Couper le micro brut vers Agora — le correspondant entend UNIQUEMENT
