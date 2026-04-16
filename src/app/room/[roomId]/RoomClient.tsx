@@ -252,12 +252,30 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         // This eliminates the black screen that lasted as long as the DB took.
         setTransStep("Accès caméra…")
 
+        // Mobile : contraintes souples (pas de min) + caméra frontale
+        // Desktop : haute qualité avec contraintes min pour garantir la résolution
+        const isMobileDevice = typeof window !== "undefined" &&
+          ("ontouchstart" in window || navigator.maxTouchPoints > 0)
+
+        const micConfig  = { AEC: true, AGC: true, encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 } }
+        const vidDesktop = { optimizationMode: "motion" as const, encoderConfig: { width: { min: 640, ideal: 1280 }, height: { min: 360, ideal: 720 }, frameRate: { min: 15, ideal: 30 }, bitrateMin: 200, bitrateMax: 1000 } }
+        const vidMobile  = { encoderConfig: { width: 640, height: 480, frameRate: 15, bitrateMin: 100, bitrateMax: 500 }, facingMode: "user" as const }
+
         const cameraPromise = AgoraRTC.createMicrophoneAndCameraTracks(
-          { AEC: true, AGC: true, encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 } },
-          { optimizationMode: "motion", encoderConfig: { width: { min: 640, ideal: 1280 }, height: { min: 360, ideal: 720 }, frameRate: { min: 15, ideal: 30 }, bitrateMin: 200, bitrateMax: 1000 } }
-        ).catch(err => {
+          micConfig,
+          isMobileDevice ? vidMobile : vidDesktop
+        ).catch(async (err) => {
           console.error("[Camera/Mic init]", err)
-          return null  // camera failure is recoverable; channel join can still proceed
+          // Fallback mobile : essayer avec résolution minimale
+          if (isMobileDevice) {
+            try {
+              return await AgoraRTC.createMicrophoneAndCameraTracks(
+                micConfig,
+                { encoderConfig: { width: 320, height: 240, frameRate: 10 } }
+              )
+            } catch (err2) { console.error("[Camera/Mic fallback]", err2) }
+          }
+          return null
         })
 
         const tokenPromise = fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
@@ -677,14 +695,17 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
-      // Recréer et republier le track audio Agora (il a été fermé au démarrage)
-      if (tracksRef.current && clientRef.current) {
+      // Recréer et republier le track audio Agora (fermé au démarrage de la traduction)
+      // Fonctionne même si tracksRef.current était null (caméra mobile failée)
+      if (clientRef.current) {
         try {
           const na = await AgoraRTC.createMicrophoneAudioTrack({
             AEC: true, AGC: true,
             encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
           })
-          tracksRef.current = { ...tracksRef.current, audio: na }
+          if (tracksRef.current) {
+            tracksRef.current = { ...tracksRef.current, audio: na }
+          }
           if (clientRef.current.connectionState === "CONNECTED") {
             await clientRef.current.publish(na)
           }
