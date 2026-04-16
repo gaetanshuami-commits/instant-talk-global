@@ -16,6 +16,7 @@ function toDeepLLang(lang: string): string {
   if (code === "PT" || code === "PT-BR") return "PT-BR"
   if (code === "PT-PT") return "PT-PT"
   if (code === "ZH-HANS" || code === "ZH") return "ZH-HANS"
+  if (code === "NO" || code === "NB") return "NB"  // Norwegian Bokmål
   return code
 }
 
@@ -68,7 +69,7 @@ async function translateWithGemini(text: string, targetLang: string): Promise<st
       }],
       generationConfig: { maxOutputTokens: 500, temperature: 0 },
     }),
-  })
+  }, 4000)  // 4 s — suffisant pour une courte phrase
 
   if (!res.ok) {
     const err = await res.text().catch(() => "")
@@ -93,37 +94,56 @@ async function translateWithDeepL(text: string, targetLang: string): Promise<str
     method: "POST",
     headers: { "Authorization": `DeepL-Auth-Key ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ text: [text], target_lang: toDeepLLang(targetLang) }),
-  })
+  }, 3000)  // 3 s — DeepL est rapide, inutile d'attendre plus
 
   if (!res.ok) throw new Error(`DeepL error ${res.status}`)
   const data = await res.json()
   return data.translations[0].text
 }
 
+// ── Traduction d'une seule langue (fonction interne réutilisable) ─────────────
+async function translateSingle(text: string, targetLang: string): Promise<string> {
+  const normalized = targetLang.toLowerCase()
+  if (DEEPL_UNSUPPORTED.has(normalized)) {
+    return translateWithGemini(text, normalized)
+  }
+  try {
+    return await translateWithDeepL(text, targetLang)
+  } catch {
+    return translateWithGemini(text, normalized)
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { text, targetLang } = await req.json()
+    const body = await req.json()
+
+    // ── Mode batch : { text, targetLangs: string[] } ──────────────────────────
+    // Toutes les langues sont traduites en parallèle côté serveur.
+    // Retourne { translations: { fr: "...", en: "...", ... } }
+    if (Array.isArray(body.targetLangs)) {
+      const { text, targetLangs } = body as { text: string; targetLangs: string[] }
+      if (!text || targetLangs.length === 0) {
+        return NextResponse.json({ error: "missing_params" }, { status: 400 })
+      }
+      const results = await Promise.allSettled(
+        targetLangs.map((lang) => translateSingle(text, lang))
+      )
+      const translations: Record<string, string> = {}
+      results.forEach((r, i) => {
+        translations[targetLangs[i]] = r.status === "fulfilled" ? r.value : text
+      })
+      return NextResponse.json({ translations })
+    }
+
+    // ── Mode simple (rétrocompatibilité) : { text, targetLang } ───────────────
+    const { text, targetLang } = body as { text: string; targetLang: string }
     if (!text || !targetLang) {
       return NextResponse.json({ error: "missing_params" }, { status: 400 })
     }
+    const translatedText = await translateSingle(text, targetLang)
+    return NextResponse.json({ translatedText, provider: "auto" })
 
-    const normalized = targetLang.toLowerCase()
-
-    // Swahili, Lingala, Hindi, Thai, Vietnamese — not in DeepL → Gemini directly
-    if (DEEPL_UNSUPPORTED.has(normalized)) {
-      const translatedText = await translateWithGemini(text, normalized)
-      return NextResponse.json({ translatedText, provider: "gemini" })
-    }
-
-    // For all other languages: try DeepL first (fast, high-quality for EU langs),
-    // fall back to Gemini if DeepL fails (quota, invalid key, unsupported variant).
-    try {
-      const translatedText = await translateWithDeepL(text, targetLang)
-      return NextResponse.json({ translatedText, provider: "deepl" })
-    } catch {
-      const translatedText = await translateWithGemini(text, normalized)
-      return NextResponse.json({ translatedText, provider: "gemini-fallback" })
-    }
   } catch (err) {
     console.error("[translate]", err)
     return NextResponse.json({ error: "translation_failed" }, { status: 500 })

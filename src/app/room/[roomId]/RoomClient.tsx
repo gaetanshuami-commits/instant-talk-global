@@ -98,9 +98,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   useEffect(() => { isTranslatingRef.current = isTranslating }, [isTranslating])
 
   // ── Mount-time SDK warmup ─────────────────────────────────────────────────────
-  // Pre-loads the Azure Speech SDK bundle (~200 kB) and fetches the Azure token
-  // in parallel with the Agora join sequence so that the first startTranslation()
-  // call has no extra latency (SDK + token are already cached).
+  // Initialise le moteur vocal au montage pour que le premier startTranslation()
+  // démarre immédiatement sans délai de chargement.
   useEffect(() => {
     void getVE().then(ve => {
       ve.warmupSDK()
@@ -408,8 +407,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         void startVoiceClone()
 
         // ── Auto-start translation ────────────────────────────────────────
-        // SDK is already pre-warmed (warmupSDK() ran at mount), so Azure STT
-        // connects in < 300 ms. Translation starts automatically — no button click needed.
+        // La reconnaissance vocale démarre automatiquement dès l'entrée dans la salle.
         // startTransRef holds the latest startTrans callback (set just below its declaration).
         if (startTransRef.current) {
           try {
@@ -418,14 +416,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             await startTransRef.current(sourceLang, targetLang, voiceGender)
             setIsTranslating(true)
           } catch (err) {
-            // Surface errors so the user knows what's wrong.
-            // Normalize cryptic Azure/provider messages into user-readable text.
             const raw = err instanceof Error ? err.message : String(err)
             let msg = raw
-            if (/azure speech token|speech token|speech key/i.test(raw)) {
-              msg = "Clé Azure Speech invalide ou region incorrecte — vérifiez AZURE_SPEECH_KEY et AZURE_SPEECH_REGION."
-            } else if (/missing azure|missing.*key/i.test(raw)) {
-              msg = "Clé Azure Speech manquante dans la configuration serveur."
+            if (/speech token|speech key|clé.*service/i.test(raw)) {
+              msg = "Service de reconnaissance vocale non disponible — vérifiez la configuration."
+            } else if (/missing.*key|api key/i.test(raw)) {
+              msg = "Clé API manquante dans la configuration serveur."
             } else if (raw.length > 90) {
               msg = raw.slice(0, 90) + "…"
             }
@@ -647,15 +643,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           // Auth errors are fatal and must be surfaced to the user.
           // Quota-exceeded errors are handled transparently by the Web Speech API
           // fallback inside voiceEngine — only surface them if the fallback also fails.
-          const isAuthFatal = /authentication error|authentication failed|auth:|401|403|unauthorized/i.test(err)
-          const isQuotaFinal = /quota exceeded.*chrome not available|browser stt.*not available/i.test(err)
-          if (isAuthFatal || isQuotaFinal) {
+          const isFatal = /authentication error|authentication failed|401|403|unauthorized|non disponible|not available/i.test(err)
+          if (isFatal) {
             setIsTranslating(false)
             subtitleRef.current?.reset()
             setTranslationError(
-              isAuthFatal
-                ? "Erreur d'authentification Azure. Vérifiez vos clés API."
-                : "Quota Azure dépassé et navigateur STT indisponible. Réessayez avec Chrome."
+              "Reconnaissance vocale non disponible. Utilisez Chrome ou Edge."
             )
           }
         },
@@ -686,7 +679,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       setIsTranslating(true)
     } catch (err) {
       console.error("[Translation start]", err)
-      setTranslationError("Impossible de démarrer la traduction. Vérifiez le micro et les clés Azure.")
+      setTranslationError("Impossible de démarrer la traduction. Vérifiez le microphone.")
     }
   }, [isTranslating, sourceLang, targetLang, voiceGender, startTrans])
 
@@ -825,7 +818,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         {/* Fallback mode banner */}
         {isFallbackActive && isTranslating && (
           <div className="flex items-center justify-between gap-2 px-4 py-1 bg-amber-700/50 text-amber-200 text-xs font-medium">
-            <span>⚡ Mode fallback actif — reconnaissance vocale navigateur (Azure indisponible)</span>
+            <span>⚡ Mode compatible actif — reconnaissance vocale navigateur</span>
           </div>
         )}
 

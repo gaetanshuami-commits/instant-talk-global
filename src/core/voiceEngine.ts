@@ -354,25 +354,26 @@ async function startWebSpeechFallback(
           if (i <= lastProcessedFinalIdx) continue
           lastProcessedFinalIdx = i
 
-          // Translate each target language via REST (Azure Translator / DeepL)
-          for (const lang of targets) {
-            try {
-              const res  = await fetch("/api/translate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: transcript, targetLang: toAzureTarget(lang) }),
-              })
-              const data = await res.json()
-              const translated = (typeof data.translatedText === "string" ? data.translatedText : transcript)
+          // Traduction de toutes les langues en une seule requête batch (exécution parallèle)
+          try {
+            const res = await fetch("/api/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: transcript, targetLangs: targets }),
+            })
+            const data = await res.json()
+            const batchTranslations: Record<string, string> = data.translations ?? {}
+            for (const lang of targets) {
+              const translated = batchTranslations[lang] ?? transcript
               callbacks.onFinal(lang, translated)
               if (ttsLang && lang === ttsLang) {
                 const rc = getRemoteCount ? getRemoteCount() : 1
                 if (rc > 0) enqueueTTS(translated, lang, voiceMap)
               }
-            } catch {
-              // Translation API failed — show original transcript at least
-              callbacks.onFinal(lang, transcript)
             }
+          } catch {
+            // API de traduction indisponible — afficher la transcription source
+            for (const lang of targets) callbacks.onFinal(lang, transcript)
           }
         } else {
           // Partial: show source transcript while translation is pending
@@ -438,30 +439,37 @@ export async function startTranslation(
   // eslint-disable-next-line no-param-reassign
   targetLangs = filteredTargets
 
-  // ── Compute targets early — needed by both Azure and Web Speech paths ──────
-  const targets = targetLangs
-    .filter((t) => t !== sourceLang)
-    .filter((t) => t !== "ln")
+  // ── Compute targets — toutes les 26+ langues, y compris le Lingala ──────────
+  const targets = targetLangs.filter((t) => t !== sourceLang)
   if (targets.length === 0) targets.push(sourceLang === "en" ? "fr" : "en")
 
   _ttsGenderGlobal = voiceGender
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
 
-  // ── Try Azure Speech ───────────────────────────────────────────────────────
-  // If Azure is unavailable (bad key, quota, network), automatically switch to
-  // the Web Speech API fallback instead of throwing an error that breaks the call.
+  // ── Primaire : Web Speech API (Chrome, Edge, Android, Samsung Browser) ──────
+  // Reconnaissance vocale native du navigateur — aucune clé API requise, premiers
+  // résultats partiels en <50 ms. Traductions via /api/translate (DeepL + Gemini)
+  // en batch parallèle : toutes les 26 langues en ~150–400 ms depuis la fin de parole.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SR = typeof window !== "undefined" && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+  if (SR) {
+    _fallbackMode = false
+    await startWebSpeechFallback(sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount)
+    return
+  }
+
+  // ── Secondaire : STT serveur (iOS Safari — Web Speech indisponible) ─────────
   let sdk: SDK
   try {
     if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
     sdk = _sdk
-    await ensureToken()         // throws if key invalid or network error
-    _fallbackMode = false       // Azure is reachable — clear any previous fallback state
-  } catch (azureErr) {
-    const reason = azureErr instanceof Error ? azureErr.message : "Azure Speech indisponible"
-    await activateWebSpeechFallback(
-      reason, sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount
+    await ensureToken()
+    _fallbackMode = false
+  } catch {
+    callbacks.onError?.(
+      "Reconnaissance vocale non disponible. Utilisez Chrome ou Edge pour la meilleure expérience."
     )
-    return  // Web Speech fallback is now running; Azure setup below is skipped
+    return
   }
 
   const speechConfig = sdk.SpeechTranslationConfig.fromAuthorizationToken(
@@ -480,45 +488,75 @@ export async function startTranslation(
   )
   // TrueText removed: adds 300ms+ latency on finals, no benefit for live translation
 
-  for (const lang of targets) speechConfig.addTargetLanguage(toAzureTarget(lang))
+  // Lingala non supporté par le STT serveur — traduit via notre API en complément
+  const azureTargets = targets.filter((t) => t !== "ln")
+  for (const lang of azureTargets) speechConfig.addTargetLanguage(toAzureTarget(lang))
 
   const audioConfig = sdk.AudioConfig.fromDefaultMicrophoneInput()
   recognizer = new sdk.TranslationRecognizer(speechConfig, audioConfig)
   const r = recognizer
 
-  // ── recognizing: immediate partial subtitle ─────────────────────────────────
+  // ── recognizing: sous-titre partiel immédiat ────────────────────────────────
   r.recognizing = (
     _s: unknown,
     e: { result: { translations: { get: (l: string) => string } } }
   ) => {
     if (!e.result.translations) return
-    for (const lang of targets) {
+    for (const lang of azureTargets) {
       const text = e.result.translations.get(toAzureTarget(lang))
       if (text) callbacks.onPartial(lang, text)
     }
   }
 
-  // ── recognized: final subtitle + TTS ───────────────────────────────────────
+  // ── recognized: sous-titre final + TTS ────────────────────────────────────
   r.recognized = (
     _s: unknown,
-    e: { result: { reason: number; translations: { get: (l: string) => string } } }
+    e: { result: { reason: number; text?: string; translations: { get: (l: string) => string } } }
   ) => {
     if (e.result.reason !== sdk.ResultReason.TranslatedSpeech) return
     if (!e.result.translations) return
-    for (const lang of targets) {
+    const recognizedText = e.result.text ?? ""
+
+    // Traductions retournées par le service
+    const missingLangs: string[] = []
+    for (const lang of azureTargets) {
       const text = e.result.translations.get(toAzureTarget(lang))
-      if (!text) continue
-      callbacks.onFinal(lang, text)
-      if (ttsLang && lang === ttsLang) {
-        const rc = getRemoteCount ? getRemoteCount() : 1
-        // enqueueTTS guarantees in-order playback even when concurrent API responses
-        // arrive out of order — fixes the "wrong sentence plays first" race condition.
-        if (rc > 0) enqueueTTS(text, lang, voiceMap)
+      if (text) {
+        callbacks.onFinal(lang, text)
+        if (ttsLang && lang === ttsLang) {
+          const rc = getRemoteCount ? getRemoteCount() : 1
+          if (rc > 0) enqueueTTS(text, lang, voiceMap)
+        }
+      } else if (recognizedText) {
+        missingLangs.push(lang)
       }
+    }
+
+    // Pour les langues non couvertes (Lingala + manquantes) — notre API de traduction
+    const extraLangs = [...missingLangs, ...targets.filter((t) => t === "ln")]
+    if (extraLangs.length > 0 && recognizedText) {
+      void fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: recognizedText, targetLangs: extraLangs }),
+      }).then((res) => res.json()).then((data) => {
+        const batch: Record<string, string> = data.translations ?? {}
+        for (const lang of extraLangs) {
+          const translated = batch[lang] ?? recognizedText
+          if (!translated) continue
+          callbacks.onFinal(lang, translated)
+          if (ttsLang && lang === ttsLang) {
+            const rc = getRemoteCount ? getRemoteCount() : 1
+            if (rc > 0) enqueueTTS(translated, lang, voiceMap)
+          }
+        }
+      }).catch(() => {
+        for (const lang of extraLangs) if (recognizedText) callbacks.onFinal(lang, recognizedText)
+      })
     }
   }
 
-  // ── canceled: handle fatal errors + automatic fallback ────────────────────
+  // ── canceled: erreurs fatales + fallback automatique ─────────────────────
   r.canceled = (
     _s: unknown,
     e: { reason: number; errorDetails: string }
@@ -526,47 +564,30 @@ export async function startTranslation(
     if (e.reason !== sdk.CancellationReason.Error) return
     const detail = e.errorDetails ?? ""
 
-    // Azure actual error messages use "quota exceeded", "429", "Too Many Requests"
     const isQuota = /quota exceeded|too many requests|429/i.test(detail)
-    // Azure auth errors: "Authentication error", "401", "403", "Unauthorized"
     const isAuth  = /authentication error|authentication failed|401|403|unauthorized/i.test(detail)
 
-    if (isQuota) {
-      // Azure quota exhausted → transparent fallback to browser Web Speech API.
-      if (recognizer === r) recognizer = null
-      try { r.close() } catch {}
+    if (recognizer === r) recognizer = null
+    try { r.close() } catch {}
 
+    if (isQuota || isAuth) {
+      // Service indisponible → basculer sur Web Speech API
       activateWebSpeechFallback(
-        "Quota Azure STT dépassé",
+        "Service STT indisponible",
         sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount
       ).catch(() => {
-        callbacks.onError?.(`Azure STT: quota dépassé et Web Speech indisponible.`)
+        callbacks.onError?.("Reconnaissance vocale indisponible. Utilisez Chrome ou Edge.")
       })
-
-    } else if (isAuth) {
-      // Bad token / wrong region — fatal, must refresh credentials
-      callbacks.onError?.(`Azure STT auth: ${detail}`)
-      if (recognizer === r) recognizer = null
-      try { r.close() } catch {}
-
     } else {
-      // Transient error (network glitch, WebSocket drop, server overload).
-      // The Azure SDK does NOT auto-reconnect after canceled — we do it manually.
-      callbacks.onError?.(`Azure STT (transient): ${detail}`)
-      if (recognizer === r) recognizer = null
-      try { r.close() } catch {}
-
-      // Auto-restart after 1 second — transparent to the user
+      // Erreur transitoire — redémarrage automatique après 1 seconde
       if (_restartTimer) clearTimeout(_restartTimer)
       _restartTimer = setTimeout(() => {
         _restartTimer = null
-        // Only restart if we're still "supposed to be translating" (no explicit stop)
-        if (recognizer !== null) return  // a new recognizer already started
+        if (recognizer !== null) return
         startTranslation(
           sourceLang, targetLangs, callbacks, ttsLang, voiceGender, getRemoteCount, allowedLangs
         ).catch(() => {
-          // If restart also fails, surface the original error
-          callbacks.onError?.(`Azure STT: ${detail}`)
+          callbacks.onError?.("Erreur de reconnaissance vocale. Réessayez.")
         })
       }, 1000)
     }
