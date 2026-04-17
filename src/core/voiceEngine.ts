@@ -109,6 +109,9 @@ type TTSJob = { text: string; lang: string; voiceMap: Record<string, string> }
 const _ttsQueue: TTSJob[] = []
 let   _ttsRunning = false
 
+// Dedup: évite de jouer deux fois le même texte (spéculatif + final identiques)
+let _ttsLastEnqueued = ""
+
 // AbortController for the in-flight ElevenLabs fetch — cancelled when a new
 // sentence starts or stopTranslation() is called.
 let _elAbort: AbortController | null = null
@@ -169,8 +172,8 @@ async function streamPCMAudio(
   if (ctx.state === "suspended") await ctx.resume()
 
   const reader = stream.getReader()
-  // Jouer par blocs de 80 ms minimum pour éviter les craquements
-  const MIN_BYTES = Math.floor(sampleRate * 0.08) * 2
+  // 10 ms chunks — premier audio audible ~70 ms plus tôt qu'avec 80 ms
+  const MIN_BYTES = Math.floor(sampleRate * 0.01) * 2
   let pending = new Uint8Array(0)
 
   function playChunk(data: Uint8Array): void {
@@ -406,22 +409,25 @@ async function startWebSpeechFallback(
   function createWSR() {
     const wsr = new SR()
     wsr.lang            = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
-    // continuous:false → UN SEUL isFinal par énoncé complet (pas de fragmentation)
-    wsr.continuous      = false
+    // continuous:true → pas de redémarrage entre phrases, zéro gap de session
+    wsr.continuous      = true
     wsr.interimResults  = true
     wsr.maxAlternatives = 1
     _wsr = wsr
 
-    // ── Pré-chargement de traduction pendant la parole ────────────────────────
-    // Le debounce lance la requête de traduction après 300ms de pause,
-    // SANS afficher le résultat. Quand isFinal arrive, la traduction est déjà
-    // prête → affichage + TTS quasi-instantanés.
-    let debounceTimer:     ReturnType<typeof setTimeout> | null = null
-    let prefetchText    = ""                              // texte envoyé en pré-chargement
-    let prefetchCache:  Record<string, string> | null = null  // résultat mis en cache
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let prefetchText   = ""
+    let prefetchCache: Record<string, string> | null = null
 
+    // ── Pré-chargement + TTS spéculatif ──────────────────────────────────────
+    // Dès 80ms de pause dans la parole :
+    //   1. Lance la traduction en arrière-plan (pré-chargement)
+    //   2. Quand la traduction arrive, démarre ElevenLabs IMMÉDIATEMENT (TTS spéculatif)
+    //      → ElevenLabs génère déjà l'audio pendant que l'utilisateur finit sa phrase
+    //   3. Quand isFinal arrive, la voix joue sans délai (déjà en train de générer)
+    //   Si le texte final ≠ texte spéculatif → dedup annule et relance avec le bon texte.
     const prefetchTranslation = (text: string) => {
-      if (text === prefetchText && prefetchCache) return  // déjà en cache
+      if (text === prefetchText && prefetchCache) return
       prefetchText  = text
       prefetchCache = null
       void fetch("/api/translate", {
@@ -429,7 +435,15 @@ async function startWebSpeechFallback(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, targetLangs: targets }),
       }).then(r => r.ok ? r.json() : null).then(data => {
-        if (data && prefetchText === text) prefetchCache = data.translations ?? {}
+        if (!data || prefetchText !== text) return
+        prefetchCache = data.translations ?? {}
+        // ── TTS spéculatif : démarrer ElevenLabs avant isFinal ─────────────
+        // Condition : texte > 2 mots (évite les TTS sur fragments courts)
+        const cache = prefetchCache
+        if (ttsLang && cache && cache[ttsLang] && text.trim().split(/\s+/).length > 2) {
+          const rc = getRemoteCount ? getRemoteCount() : 1
+          if (rc > 0) enqueueTTS(cache[ttsLang], ttsLang, voiceMap)
+        }
       }).catch(() => {})
     }
 
@@ -441,35 +455,29 @@ async function startWebSpeechFallback(
         if (!transcript) continue
 
         if (!result.isFinal) {
-          // Bloquer les partiaux qui sont un écho du redémarrage WSR :
-          // après isFinal, la nouvelle session peut recapter la même phrase
-          // en partiel → écraserait la traduction affichée. On bloque
-          // si le texte est identique au dernier final et dans la fenêtre 2s.
           const isRestartEcho = transcript === lastFinalText
             && (Date.now() - lastFinalAt) < 2000
           if (!isRestartEcho) {
             for (const lang of targets) callbacks.onPartial(lang, transcript)
           }
-          // Pré-charger la traduction après 150ms de pause (silencieux)
+          // Debounce 80ms (réduit depuis 150ms) → pré-chargement + TTS spéculatif plus tôt
           if (debounceTimer) clearTimeout(debounceTimer)
           debounceTimer = setTimeout(() => {
             debounceTimer = null
             if (_wsrActive) prefetchTranslation(transcript)
-          }, 150)
+          }, 80)
           continue
         }
 
-        // ── isFinal : afficher + TTS une seule fois ───────────────────────────
+        // ── isFinal ───────────────────────────────────────────────────────────
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
 
-        // Anti-replay : même phrase dans les 3s = écho redémarrage → skip
         const now = Date.now()
         if (transcript === lastFinalText && now - lastFinalAt < 3000) continue
         lastFinalText = transcript
         lastFinalAt   = now
 
-        // Utiliser le cache pré-chargé si disponible → 0ms d'attente
-        // Sinon fetch immédiat (transcript court ou parole sans pause)
+        // Traduction : cache pré-chargé (0ms) ou fetch immédiat
         let batchTranslations: Record<string, string>
         if (prefetchCache && prefetchText === transcript) {
           batchTranslations = prefetchCache
@@ -492,7 +500,11 @@ async function startWebSpeechFallback(
         for (const lang of targets) {
           const translated = batchTranslations[lang] ?? transcript
           callbacks.onFinal(lang, translated)
-          if (ttsLang && lang === ttsLang) enqueueTTS(translated, lang, voiceMap)
+          // enqueueTTS intègre le dedup : si TTS spéculatif joue déjà ce texte → no-op
+          if (ttsLang && lang === ttsLang) {
+            const rc = getRemoteCount ? getRemoteCount() : 1
+            if (rc > 0) enqueueTTS(translated, lang, voiceMap)
+          }
         }
       }
     }
@@ -752,6 +764,7 @@ export async function stopTranslation(): Promise<void> {
   // Clear the TTS queue so no stale sentences play after stop
   _ttsQueue.length = 0
   _ttsRunning = false
+  _ttsLastEnqueued = ""  // reset dedup
 
   // Reset audio timeline — prevents a long scheduling backlog if sentences
   // accumulated while the user was speaking quickly.
@@ -789,8 +802,11 @@ export async function stopTranslation(): Promise<void> {
 // from building up when the speaker talks faster than ElevenLabs can generate.
 
 function enqueueTTS(text: string, lang: string, voiceMap: Record<string, string>): void {
+  // Dedup: si le texte est exactement le même que ce qui tourne déjà, on ne repart pas.
+  // Cas typique : TTS spéculatif déjà lancé, le final arrive avec le même texte.
+  if (text === _ttsLastEnqueued && _ttsRunning) return
+  _ttsLastEnqueued = text
   // Drop stale queued items — only keep the job that was just added.
-  // This ensures the most recent sentence is always next, never buried under backlog.
   _ttsQueue.length = 0
   _ttsQueue.push({ text, lang, voiceMap })
   if (!_ttsRunning) void drainTTSQueue()
