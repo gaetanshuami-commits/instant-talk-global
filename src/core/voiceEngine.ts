@@ -66,12 +66,14 @@ export type SubtitleCallbacks = {
 
 export type VoiceGender = "female" | "male"
 
-// ─── Web Audio — TTS output (Agora interpreter track only) ───────────────────
-// Never connected to ctx.destination — local speakers never hear own translation.
+// ─── Web Audio — TTS output + mic mix (Agora interpreter track) ──────────────
+// ttsDestNode reçoit : 1) les chunks TTS  2) optionnellement le mic original
+// → le track Agora custom publié depuis ce stream transporte les deux voix.
 
 let ttsCtx: AudioContext | null = null
 let ttsDestNode: MediaStreamAudioDestinationNode | null = null
 let playbackEndTime = 0
+let _micMixSource: MediaStreamAudioSourceNode | null = null
 
 export function getTTSMediaStream(): MediaStream {
   if (!ttsCtx) {
@@ -79,6 +81,25 @@ export function getTTSMediaStream(): MediaStream {
     ttsDestNode = ttsCtx.createMediaStreamDestination()
   }
   return ttsDestNode!.stream
+}
+
+/** Injecte le micro dans le mixer TTS → remote entend voix originale + traduction. */
+export function addMicToTTSMix(micTrack: MediaStreamTrack): void {
+  if (!ttsCtx || !ttsDestNode) getTTSMediaStream()
+  if (!ttsCtx || !ttsDestNode) return
+  try {
+    if (_micMixSource) { try { _micMixSource.disconnect() } catch {} }
+    _micMixSource = ttsCtx.createMediaStreamSource(new MediaStream([micTrack]))
+    _micMixSource.connect(ttsDestNode)
+  } catch { /* non-fatal */ }
+}
+
+/** Retire le micro du mixer (appeler avant de recréer le track mic Agora). */
+export function removeMicFromTTSMix(): void {
+  if (_micMixSource) {
+    try { _micMixSource.disconnect() } catch {}
+    _micMixSource = null
+  }
 }
 
 // ─── SDK module state ─────────────────────────────────────────────────────────
@@ -749,6 +770,7 @@ export function closeAudioContext(): void {
   playbackEndTime = 0
   _elAbort?.abort()
   _elAbort = null
+  removeMicFromTTSMix()
   if (ttsCtx) {
     try { ttsCtx.close() } catch {}
     ttsCtx       = null

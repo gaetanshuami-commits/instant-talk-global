@@ -491,7 +491,18 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const publishInterpreter = useCallback(async () => {
     if (interpreterRef.current || !clientRef.current) return
     try {
-      const ve     = await getVE()
+      const ve = await getVE()
+
+      // Injecter le mic dans le mixer TTS → le track custom portera les deux voix.
+      // Agora n'autorise qu'un seul audio track : on remplace le mic par le track mixé.
+      const micStreamTrack = tracksRef.current?.audio?.getMediaStreamTrack?.()
+      if (micStreamTrack) ve.addMicToTTSMix(micStreamTrack)
+
+      // Unpublish le track mic (remplacé par le track mixé ci-dessous)
+      if (tracksRef.current?.audio) {
+        try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
+      }
+
       const stream = ve.getTTSMediaStream()
       const track  = stream.getAudioTracks()[0]
       if (!track) return
@@ -688,7 +699,23 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
-      // Track audio non fermé au démarrage → pas besoin de recréer
+      ve.removeMicFromTTSMix()
+      // Unpublish interpreter et republier le mic seul
+      if (clientRef.current && interpreterRef.current) {
+        try { await clientRef.current.unpublish(interpreterRef.current) } catch {}
+        try { interpreterRef.current.close() } catch {}
+        interpreterRef.current = null
+      }
+      if (clientRef.current) {
+        try {
+          const na = await AgoraRTC.createMicrophoneAudioTrack({
+            AEC: true, AGC: true,
+            encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
+          })
+          if (tracksRef.current) tracksRef.current = { ...tracksRef.current, audio: na }
+          if (clientRef.current.connectionState === "CONNECTED") await clientRef.current.publish(na)
+        } catch (err) { console.warn("[Mic restore]", err) }
+      }
       setIsTranslating(false)
       setTranslationError(null)
       setIsFallbackActive(false)
