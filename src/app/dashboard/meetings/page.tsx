@@ -65,6 +65,7 @@ function MeetingsPageInner() {
   const [status, setStatus] = useState("");
   const [selectedDate, setSelectedDate] = useState(prefillDate ?? new Date().toISOString().slice(0, 10));
   const [apiReady, setApiReady] = useState(true);
+  const [dbError, setDbError] = useState("");
   const schedulerRef = useRef<HTMLDivElement | null>(null);
 
   async function loadMeetings() {
@@ -74,9 +75,11 @@ function MeetingsPageInner() {
       const data = text ? JSON.parse(text) : { meetings: [], prismaReady: false };
       setMeetings(data.meetings || []);
       setApiReady(data.prismaReady !== false);
-    } catch {
+      if (data.prismaReady === false) setDbError(data.detail || data.error || "");
+    } catch (e) {
       setMeetings([]);
       setApiReady(false);
+      setDbError(String(e));
     }
   }
 
@@ -234,12 +237,7 @@ function MeetingsPageInner() {
         }}>
           <AlertTriangle size={16} />
           <span>
-            Base de données inaccessible. Rendez-vous sur{" "}
-            <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer"
-              style={{ color: "#f87171", textDecoration: "underline" }}>
-              Supabase Dashboard
-            </a>{" "}
-            pour réactiver votre projet, puis rechargez la page.
+            Base de données inaccessible — rechargez la page.{dbError && <span style={{opacity:0.75, fontSize:"12px", display:"block", marginTop:"4px", fontWeight:400}}>{dbError}</span>}
           </span>
         </div>
       )}
