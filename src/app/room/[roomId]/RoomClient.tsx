@@ -491,21 +491,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const publishInterpreter = useCallback(async () => {
     if (interpreterRef.current || !clientRef.current) return
     try {
-      const ve = await getVE()
-
-      // Injecter le mic dans le mixer TTS → le track custom portera les deux voix.
-      // Agora n'autorise qu'un seul audio track : on remplace le mic par le track mixé.
-      const micStreamTrack = tracksRef.current?.audio?.getMediaStreamTrack?.()
-      if (micStreamTrack) ve.addMicToTTSMix(micStreamTrack)
-
-      // Unpublish le track mic (remplacé par le track mixé ci-dessous)
-      if (tracksRef.current?.audio) {
-        try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
-      }
-
+      const ve     = await getVE()
       const stream = ve.getTTSMediaStream()
       const track  = stream.getAudioTracks()[0]
       if (!track) return
+      // SDK Agora 4.24.3 : pas de restriction sur les tracks audio multiples.
+      // On publie le track TTS EN PLUS du mic — remote entend les deux simultanément.
+      // Le mic Agora reste publié et n'est jamais touché ici.
       const interpTrack = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: track })
       interpreterRef.current = interpTrack
       await clientRef.current.publish(interpTrack)
@@ -699,22 +691,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
-      ve.removeMicFromTTSMix()
-      // Unpublish interpreter et republier le mic seul
+      // Mic jamais unpublié → toujours actif, pas besoin de recréer.
+      // Juste fermer le track TTS interprète.
       if (clientRef.current && interpreterRef.current) {
         try { await clientRef.current.unpublish(interpreterRef.current) } catch {}
         try { interpreterRef.current.close() } catch {}
         interpreterRef.current = null
-      }
-      if (clientRef.current) {
-        try {
-          const na = await AgoraRTC.createMicrophoneAudioTrack({
-            AEC: true, AGC: true,
-            encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
-          })
-          if (tracksRef.current) tracksRef.current = { ...tracksRef.current, audio: na }
-          if (clientRef.current.connectionState === "CONNECTED") await clientRef.current.publish(na)
-        } catch (err) { console.warn("[Mic restore]", err) }
       }
       setIsTranslating(false)
       setTranslationError(null)
