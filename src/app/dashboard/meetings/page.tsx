@@ -104,7 +104,7 @@ function MeetingsPageInner() {
   );
 
   async function createMeeting() {
-    setStatus("CrÃƒÂ©ation en cours...");
+    setStatus("Création en cours...");
 
     try {
       const res = await fetch("/api/meetings", {
@@ -129,29 +129,29 @@ function MeetingsPageInner() {
 
       if (!res.ok) {
         if (data.error === "db_unavailable") {
-          setStatus("Base de donnÃƒÂ©es inaccessible Ã¢â‚¬â€ vÃƒÂ©rifiez Supabase");
+          setStatus("Base de données inaccessible — vérifiez Supabase");
         } else if (data.error === "invalid_payload") {
-          setStatus("Champs manquants : titre, email hÃƒÂ´te et dates sont requis");
+          setStatus("Champs manquants : titre, email hôte et dates sont requis");
         } else {
-          setStatus(data.detail || data.error || "Impossible de crÃƒÂ©er la rÃƒÂ©union");
+          setStatus(data.detail || data.error || "Impossible de créer la réunion");
         }
         return;
       }
 
       setCreatedLink(data.joinLink || "");
-      setStatus("RÃƒÂ©union programmÃƒÂ©e avec succÃƒÂ¨s");
+      setStatus("Réunion programmée avec succès");
       setTitle("");
       setDescription("");
       setHostEmail("");
       setInvitees("");
       await loadMeetings();
     } catch {
-      setStatus("Erreur rÃƒÂ©seau ou API");
+      setStatus("Erreur réseau ou API");
     }
   }
 
   async function createInstantMeeting() {
-    setStatus("CrÃƒÂ©ation de la rÃƒÂ©union instantanÃƒÂ©e...");
+    setStatus("Création de la réunion instantanée...");
 
     const now = new Date();
     const end = new Date(now.getTime() + 60 * 60 * 1000);
@@ -161,8 +161,8 @@ function MeetingsPageInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: "Nouvelle rÃƒÂ©union",
-          description: "RÃƒÂ©union instantanÃƒÂ©e",
+          title: "Nouvelle réunion",
+          description: "Réunion instantanée",
           hostEmail: hostEmail || "host@instant-talk.com",
           startsAt: formatInputDate(now),
           endsAt: formatInputDate(end),
@@ -175,20 +175,20 @@ function MeetingsPageInner() {
       const data = text ? JSON.parse(text) : {};
 
       if (!res.ok) {
-        setStatus(data.detail || data.error || "Impossible de crÃƒÂ©er la rÃƒÂ©union instantanÃƒÂ©e");
+        setStatus(data.detail || data.error || "Impossible de créer la réunion instantanée");
         return;
       }
 
       setCreatedLink(data.joinLink || "");
-      setStatus("RÃƒÂ©union instantanÃƒÂ©e crÃƒÂ©ÃƒÂ©e");
+      setStatus("Réunion instantanée créée");
       await loadMeetings();
     } catch {
-      setStatus("Erreur rÃƒÂ©seau ou API");
+      setStatus("Erreur réseau ou API");
     }
   }
   async function copyLink(joinLink: string) {
     await navigator.clipboard.writeText(joinLink);
-    setStatus("Lien copiÃƒÂ©");
+    setStatus("Lien copié");
   }
 
   async function sendInvites(id: string) {
@@ -196,10 +196,10 @@ function MeetingsPageInner() {
     try {
       const res = await fetch(`/api/meetings/${id}/invite`, { method: "POST" });
       if (!res.ok) {
-        setStatus("Impossible dÃ¢â‚¬â„¢envoyer les invitations");
+        setStatus("Impossible d'envoyer les invitations");
         return;
       }
-      setStatus("Invitations envoyÃƒÂ©es");
+      setStatus("Invitations envoyées");
       await loadMeetings();
     } catch {
       setStatus("Erreur envoi invitations");
@@ -209,7 +209,7 @@ function MeetingsPageInner() {
   async function deleteMeeting(id: string) {
     try {
       await fetch(`/api/meetings/${id}`, { method: "DELETE" });
-      setStatus("RÃƒÂ©union supprimÃƒÂ©e");
+      setStatus("Réunion supprimée");
       await loadMeetings();
     } catch {
       setStatus("Erreur suppression");
@@ -234,12 +234,12 @@ function MeetingsPageInner() {
         }}>
           <AlertTriangle size={16} />
           <span>
-            Base de donnÃƒÂ©es inaccessible. Rendez-vous sur{" "}
+            Base de données inaccessible. Rendez-vous sur{" "}
             <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer"
               style={{ color: "#f87171", textDecoration: "underline" }}>
               Supabase Dashboard
             </a>{" "}
-            pour rÃƒÂ©activer votre projet, puis rechargez la page.
+            pour réactiver votre projet, puis rechargez la page.
           </span>
         </div>
       )}
@@ -258,7 +258,7 @@ function MeetingsPageInner() {
                 Planification & calendrier
               </div>
               <div style={{ marginTop: "10px", opacity: 0.72, fontSize: "16px" }}>
-                Un cockpit de rÃƒÂ©union plus premium, plus net et plus crÃƒÂ©dible.
+                Un cockpit de réunion plus premium, plus net et plus crédible.
               </div>
             </div>
 
@@ -285,7 +285,7 @@ function MeetingsPageInner() {
                   boxShadow: "0 18px 40px rgba(37,99,235,0.28)",
                 }}
               >
-                Nouvelle rÃƒÂ©union
+                Nouvelle réunion
               </button>
 
               <button
@@ -329,7 +329,7 @@ function MeetingsPageInner() {
                   fontWeight: 700,
                 }}
               >
-                {futureMeetings.length} ÃƒÂ  venir
+                {futureMeetings.length} à venir
               </div>
               <div
                 style={{
@@ -350,10 +350,10 @@ function MeetingsPageInner() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
             {[
-              { label: "RÃƒÂ©unions futures", value: String(futureMeetings.length) },
-              { label: "RÃƒÂ©unions passÃƒÂ©es", value: String(pastMeetings.length) },
+              { label: "Réunions futures", value: String(futureMeetings.length) },
+              { label: "Réunions passées", value: String(pastMeetings.length) },
               { label: "Sessions du jour", value: String(todayMeetings.length) },
-              { label: "InvitÃƒÂ©s estimÃƒÂ©s", value: String(meetings.reduce((a, m) => a + m.invitees.length, 0)) },
+              { label: "Invités estimés", value: String(meetings.reduce((a, m) => a + m.invitees.length, 0)) },
             ].map((card) => (
               <div
                 key={card.label}
@@ -384,9 +384,9 @@ function MeetingsPageInner() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
                 <div>
-                  <div style={{ fontSize: "26px", fontWeight: 800 }}>Programmer une rÃƒÂ©union</div>
+                  <div style={{ fontSize: "26px", fontWeight: 800 }}>Programmer une réunion</div>
                   <div style={{ opacity: 0.68, marginTop: "6px" }}>
-                    CrÃƒÂ©e une session premium avec lien sÃƒÂ©curisÃƒÂ©, invitÃƒÂ©s et calendrier.
+                    Crée une session premium avec lien sécurisé, invités et calendrier.
                   </div>
                 </div>
                 <div
@@ -407,10 +407,10 @@ function MeetingsPageInner() {
               </div>
 
               <div style={{ display: "grid", gap: "14px" }}>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre de la rÃƒÂ©union" style={{ height: "54px", borderRadius: "16px", padding: "0 16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px" }} />
+                <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre de la réunion" style={{ height: "54px", borderRadius: "16px", padding: "0 16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px" }} />
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description, objectif, ordre du jour..." style={{ minHeight: "120px", borderRadius: "16px", padding: "16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px", resize: "vertical" }} />
                 <input value={hostEmail} onChange={(e) => setHostEmail(e.target.value)} placeholder="Email organisateur" style={{ height: "54px", borderRadius: "16px", padding: "0 16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px" }} />
-                <input value={invitees} onChange={(e) => setInvitees(e.target.value)} placeholder="InvitÃƒÂ©s sÃƒÂ©parÃƒÂ©s par virgule" style={{ height: "54px", borderRadius: "16px", padding: "0 16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px" }} />
+                <input value={invitees} onChange={(e) => setInvitees(e.target.value)} placeholder="Invités séparés par virgule" style={{ height: "54px", borderRadius: "16px", padding: "0 16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px" }} />
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} style={{ height: "54px", borderRadius: "16px", padding: "0 16px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: "15px" }} />
@@ -432,7 +432,7 @@ function MeetingsPageInner() {
                       boxShadow: "0 18px 40px rgba(92,99,255,0.32)",
                     }}
                   >
-                    Programmer une rÃƒÂ©union
+                    Programmer une réunion
                   </button>
 
                   <div
@@ -448,7 +448,7 @@ function MeetingsPageInner() {
                       fontWeight: 600,
                     }}
                   >
-                    {status || "PrÃƒÂªt"}
+                    {status || "Prêt"}
                   </div>
                 </div>
 
@@ -462,7 +462,7 @@ function MeetingsPageInner() {
                       border: "1px solid rgba(139,163,255,0.18)",
                     }}
                   >
-                    <div style={{ fontWeight: 800, marginBottom: "8px" }}>Lien gÃƒÂ©nÃƒÂ©rÃƒÂ©</div>
+                    <div style={{ fontWeight: 800, marginBottom: "8px" }}>Lien généré</div>
                     <div style={{ wordBreak: "break-all", opacity: 0.86 }}>{createdLink}</div>
                   </div>
                 ) : null}
@@ -525,7 +525,7 @@ function MeetingsPageInner() {
                       opacity: 0.78,
                     }}
                   >
-                    Aucune rÃƒÂ©union ÃƒÂ  cette date
+                    Aucune réunion à cette date
                   </div>
                 ) : (
                   todayMeetings.map((meeting) => (
@@ -540,7 +540,7 @@ function MeetingsPageInner() {
                     >
                       <div style={{ fontWeight: 800, fontSize: "16px" }}>{meeting.title}</div>
                       <div style={{ opacity: 0.72, marginTop: "6px" }}>{formatPretty(meeting.startsAt)}</div>
-                      <div style={{ opacity: 0.72, marginTop: "4px" }}>{meeting.invitees.length} invitÃƒÂ©(s)</div>
+                      <div style={{ opacity: 0.72, marginTop: "4px" }}>{meeting.invitees.length} invité(s)</div>
                     </div>
                   ))
                 )}
@@ -561,8 +561,8 @@ function MeetingsPageInner() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
                 <div>
-                  <div style={{ fontSize: "24px", fontWeight: 800 }}>RÃƒÂ©unions futures</div>
-                  <div style={{ opacity: 0.68, marginTop: "6px" }}>Les prochains rendez-vous planifiÃƒÂ©s.</div>
+                  <div style={{ fontSize: "24px", fontWeight: 800 }}>Réunions futures</div>
+                  <div style={{ opacity: 0.68, marginTop: "6px" }}>Les prochains rendez-vous planifiés.</div>
                 </div>
                 <div style={{ fontWeight: 800, color: "#b9c6ff" }}>{futureMeetings.length}</div>
               </div>
@@ -578,7 +578,7 @@ function MeetingsPageInner() {
                       opacity: 0.78,
                     }}
                   >
-                    Aucune rÃƒÂ©union programmÃƒÂ©e
+                    Aucune réunion programmée
                   </div>
                 ) : (
                   futureMeetings.map((meeting) => (
@@ -618,18 +618,18 @@ function MeetingsPageInner() {
                       </div>
 
                       <div style={{ opacity: 0.74 }}>
-                        {meeting.invitees.map((i) => i.email).join(", ") || "Aucun invitÃƒÂ©"}
+                        {meeting.invitees.map((i) => i.email).join(", ") || "Aucun invité"}
                       </div>
 
                       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                         <button onClick={() => copyLink(meeting.joinLink)} style={{ height: "40px", borderRadius: "999px", border: "1px solid rgba(255,255,255,0.08)", padding: "0 14px", background: "rgba(255,255,255,0.05)", color: "white", fontWeight: 700, cursor: "pointer" }}>
-                          Copier le lien rÃƒÂ©union
+                          Copier le lien réunion
                         </button>
                         <button onClick={() => sendInvites(meeting.id)} style={{ height: "40px", borderRadius: "999px", border: "1px solid rgba(139,163,255,0.18)", padding: "0 14px", background: "rgba(99,102,241,0.16)", color: "white", fontWeight: 700, cursor: "pointer" }}>
                           Inviter
                         </button>
                         <button onClick={() => window.open(meeting.joinLink, "_blank")} style={{ height: "40px", borderRadius: "999px", border: "0", padding: "0 14px", background: "linear-gradient(135deg, #6d74ff, #7c3aed)", color: "white", fontWeight: 800, cursor: "pointer" }}>
-                          DÃƒÂ©marrer
+                          Démarrer
                         </button>
                         <button onClick={() => deleteMeeting(meeting.id)} style={{ height: "40px", borderRadius: "999px", border: "1px solid rgba(255,255,255,0.08)", padding: "0 14px", background: "rgba(220,38,38,0.16)", color: "white", fontWeight: 700, cursor: "pointer" }}>
                           Supprimer
@@ -653,8 +653,8 @@ function MeetingsPageInner() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
                 <div>
-                  <div style={{ fontSize: "24px", fontWeight: 800 }}>RÃƒÂ©unions passÃƒÂ©es</div>
-                  <div style={{ opacity: 0.68, marginTop: "6px" }}>Historique de tes prÃƒÂ©cÃƒÂ©dentes sessions.</div>
+                  <div style={{ fontSize: "24px", fontWeight: 800 }}>Réunions passées</div>
+                  <div style={{ opacity: 0.68, marginTop: "6px" }}>Historique de tes précédentes sessions.</div>
                 </div>
                 <div style={{ fontWeight: 800, color: "#b9c6ff" }}>{pastMeetings.length}</div>
               </div>
@@ -670,7 +670,7 @@ function MeetingsPageInner() {
                       opacity: 0.78,
                     }}
                   >
-                    Aucune rÃƒÂ©union passÃƒÂ©e
+                    Aucune réunion passée
                   </div>
                 ) : (
                   pastMeetings.map((meeting) => (

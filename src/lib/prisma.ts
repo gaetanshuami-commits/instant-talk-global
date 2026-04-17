@@ -12,8 +12,20 @@ if (!connectionString) {
   throw new Error("Missing DATABASE_URL");
 }
 
+// Strip ?sslmode=... from the URL so pg uses our explicit ssl config below.
+// Since pg v8.12, sslmode=require is treated as verify-full (breaking Supabase).
+// We remove it from the URL and pass ssl.rejectUnauthorized=false directly.
+let cleanConnectionString = connectionString;
+try {
+  const u = new URL(connectionString);
+  u.searchParams.delete("sslmode");
+  cleanConnectionString = u.toString();
+} catch {
+  // not a valid URL — use as-is
+}
+
 const pool = new Pool({
-  connectionString,
+  connectionString: cleanConnectionString,
   // Supabase uses a certificate chain not in Node's default trust store.
   // ssl.rejectUnauthorized=false keeps the connection encrypted (TLS is active)
   // but skips chain verification — standard practice for Supabase + pg.
