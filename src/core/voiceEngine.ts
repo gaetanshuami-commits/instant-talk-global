@@ -519,16 +519,13 @@ async function startWebSpeechFallback(
       tryStart(1)
     }
 
-    // Délai initial : laisser le système audio sortir du mode VOICE_COMMUNICATION
-    // Mobile Android : 1500ms (AEC hardware lent à libérer après close() Agora)
-    // Desktop       : 400ms suffisant
-    const isMobile = typeof window !== "undefined" &&
-      ("ontouchstart" in window || navigator.maxTouchPoints > 0)
+    // Micro Agora reste ouvert → pas besoin d'attendre la libération du hardware.
+    // Démarrage immédiat de la reconnaissance vocale.
     setTimeout(() => {
       if (_wsrActive && _wsr === wsr) {
         try { wsr.start() } catch { /* onend gérera */ }
       }
-    }, isMobile ? 1500 : 400)
+    }, 50)
   }
 
   createWSR()

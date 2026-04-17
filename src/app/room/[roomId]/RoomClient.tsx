@@ -714,8 +714,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       if (seq !== restartSeq.current) return
       const ve = await getVE()
       await ve.stopTranslation()
-      // Le track audio est déjà fermé (startTrans l'a fermé).
-      // startTrans va le fermer à nouveau — pas besoin de recréer entre les deux.
       if (seq !== restartSeq.current) return
       try {
         await startTrans(sourceLang, targetLang, voiceGender)
