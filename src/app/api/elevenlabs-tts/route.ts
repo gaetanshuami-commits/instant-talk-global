@@ -10,9 +10,10 @@ export const ELEVENLABS_SUPPORTED_LANGS = new Set([
   "cs", "sk", "hu", "ro", "bg", "el", "vi",
 ])
 
-// Voix fixes — indépendantes de ELEVENLABS_VOICE_ID (réservé aux voix clonées)
-const VOICE_FEMALE = "21m00Tcm4TlvDq8ikWAM"  // Rachel — voix féminine (pre-made, fiable)
-const VOICE_MALE   = "TxGEqnHWrfWFTfGW9XjX"  // Josh   — voix masculine
+// Voix multilingues — supportent nativement toutes les langues avec accents locaux
+// Sarah (female) et Will (male) = modèles multilingues ElevenLabs v2, meilleur accent
+const VOICE_FEMALE = "EXAVITQu4vr4xnSDxMaL"  // Sarah — voix féminine multilingue
+const VOICE_MALE   = "pqHfZKP75CvOlQylNhV4"  // Bill  — voix masculine multilingue
 
 export async function POST(req: NextRequest) {
   try {

@@ -430,10 +430,9 @@ async function startWebSpeechFallback(
   function createWSR() {
     const wsr = new SR()
     wsr.lang            = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
-    // continuous:true → pas de redémarrage entre phrases, zéro gap de session
-    wsr.continuous      = true
-    wsr.interimResults  = true
-    wsr.maxAlternatives = 1
+    wsr.continuous      = true   // pas de gap de session entre phrases
+    wsr.interimResults  = true   // partials immédiatement visibles
+    wsr.maxAlternatives = 3      // 3 alternatives → choisir le meilleur résultat
     _wsr = wsr
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -471,8 +470,13 @@ async function startWebSpeechFallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wsr.onresult = async (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result     = event.results[i]
-        const transcript: string = result[0].transcript.trim()
+        const result = event.results[i]
+        // Choisir la meilleure alternative parmi les 3 (la plus longue = la plus complète)
+        let transcript = result[0].transcript.trim()
+        for (let a = 1; a < result.length; a++) {
+          const alt = result[a]?.transcript?.trim() ?? ""
+          if (alt.length > transcript.length) transcript = alt
+        }
         if (!transcript) continue
 
         if (!result.isFinal) {

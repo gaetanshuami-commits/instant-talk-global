@@ -98,6 +98,12 @@ export default function SuccessPage() {
   useEffect(() => {
     if (!verifiedPlan) return;
     setClientAccess(verifiedPlan);
+    // Auto-redirect to room 3 seconds after access is granted
+    const roomId = `room-${Math.random().toString(36).slice(2, 10)}`;
+    const timer = setTimeout(() => {
+      window.location.href = `/room/${roomId}?host=1`;
+    }, 3000);
+    return () => clearTimeout(timer);
   }, [verifiedPlan]);
 
   const planLabel = planLabels[verifiedPlan ?? fallbackPlan] ?? "Premium";
