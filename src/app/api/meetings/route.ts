@@ -1,74 +1,53 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import {
-  buildMeetingLink,
-  createInviteToken,
-  createMeetingRoomId,
-  meetingStatusFromDates,
-} from "@/lib/meetings";
+import { NextRequest, NextResponse } from "next/server";
+import { pool } from "@/lib/prisma";
+import { buildMeetingLink, createInviteToken, createMeetingRoomId, meetingStatusFromDates } from "@/lib/meetings";
+import { createId } from "@paralleldrive/cuid2";
 
-type InviteeRecord = {
-  id: string
-  email: string
-  status: string
-}
-
-type ReminderRecord = {
-  id: string
-  remindAt: Date | string
-  sentAt?: Date | string | null
-}
-
-type MeetingRecord = {
-  id: string
-  title: string
-  description?: string | null
-  hostEmail: string
-  roomId: string
-  inviteToken: string
-  startsAt: Date | string
-  endsAt: Date | string
-  timezone: string
-  status: string
-  createdAt: Date | string
-  updatedAt: Date | string
-  invitees?: InviteeRecord[]
-  reminders?: ReminderRecord[]
-}
-
-type MeetingModel = {
-  findMany: (args: unknown) => Promise<MeetingRecord[]>
-  create: (args: unknown) => Promise<MeetingRecord>
-}
-
-function serializeMeeting(origin: string, meeting: MeetingRecord) {
-  return {
-    id: meeting.id,
-    title: meeting.title,
-    description: meeting.description,
-    hostEmail: meeting.hostEmail,
-    roomId: meeting.roomId,
-    startsAt: meeting.startsAt,
-    endsAt: meeting.endsAt,
-    timezone: meeting.timezone,
-    status: meeting.status,
-    createdAt: meeting.createdAt,
-    updatedAt: meeting.updatedAt,
-    invitees: meeting.invitees ?? [],
-    reminders: meeting.reminders ?? [],
-    joinLink: buildMeetingLink(origin, meeting.roomId, meeting.inviteToken),
-  };
+function origin(req: NextRequest) {
+  return req.nextUrl.origin;
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const meetings = await prisma.meeting.findMany({
-      orderBy: { startsAt: "asc" },
-      include: { invitees: true, reminders: true },
-    });
+    const { rows: meetings } = await pool.query<{
+      id: string; title: string; description: string | null;
+      host_email: string; room_id: string; invite_token: string;
+      starts_at: Date; ends_at: Date; timezone: string; status: string;
+    }>(`SELECT id, title, description, "hostEmail" AS host_email, "roomId" AS room_id,
+         "inviteToken" AS invite_token, "startsAt" AS starts_at, "endsAt" AS ends_at,
+         timezone, status
+        FROM "Meeting" ORDER BY "startsAt" ASC`);
+
+    const ids = meetings.map((m) => m.id);
+    let invitees: { id: string; meeting_id: string; email: string; status: string }[] = [];
+    if (ids.length > 0) {
+      const { rows } = await pool.query<{ id: string; meeting_id: string; email: string; status: string }>(
+        `SELECT id, "meetingId" AS meeting_id, email, status FROM "MeetingInvite" WHERE "meetingId" = ANY($1)`,
+        [ids]
+      );
+      invitees = rows;
+    }
+
+    const inviteesByMeeting: Record<string, typeof invitees> = {};
+    for (const inv of invitees) {
+      if (!inviteesByMeeting[inv.meeting_id]) inviteesByMeeting[inv.meeting_id] = [];
+      inviteesByMeeting[inv.meeting_id].push(inv);
+    }
 
     return NextResponse.json({
-      meetings: meetings.map((m) => serializeMeeting(req.nextUrl.origin, m)),
+      meetings: meetings.map((m) => ({
+        id: m.id,
+        title: m.title,
+        description: m.description,
+        hostEmail: m.host_email,
+        roomId: m.room_id,
+        startsAt: m.starts_at,
+        endsAt: m.ends_at,
+        timezone: m.timezone,
+        status: m.status,
+        invitees: (inviteesByMeeting[m.id] ?? []).map((i) => ({ id: i.id, email: i.email, status: i.status })),
+        joinLink: buildMeetingLink(origin(req), m.room_id, m.invite_token),
+      })),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -78,15 +57,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const meetingModel = (prisma as unknown as { meeting?: MeetingModel }).meeting;
-
-  if (!meetingModel) {
-    return NextResponse.json(
-      { error: "meetings_prisma_not_ready" },
-      { status: 503 }
-    );
-  }
-
   const body = await req.json();
 
   const title = String(body.title || "").trim();
@@ -95,62 +65,50 @@ export async function POST(req: NextRequest) {
   const timezone = String(body.timezone || "Europe/Paris");
   const startsAt = new Date(body.startsAt);
   const endsAt = new Date(body.endsAt);
-  const invitees = Array.isArray(body.invitees) ? body.invitees : [];
+  const invitees: string[] = Array.isArray(body.invitees) ? body.invitees : [];
 
-  if (!title || !hostEmail || Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+  if (!title || !hostEmail || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
-
-  if (endsAt.getTime() <= startsAt.getTime()) {
+  if (endsAt <= startsAt) {
     return NextResponse.json({ error: "invalid_meeting_range" }, { status: 400 });
   }
 
+  const id = createId();
   const roomId = createMeetingRoomId();
   const inviteToken = createInviteToken();
-  const origin = req.nextUrl.origin;
+  const status = meetingStatusFromDates(startsAt, endsAt);
 
   try {
-    const meeting = await meetingModel.create({
-      data: {
-        title,
-        description,
-        hostEmail,
-        roomId,
-        inviteToken,
-        startsAt,
-        endsAt,
-        timezone,
-        status: meetingStatusFromDates(startsAt, endsAt),
-        invitees: {
-          create: invitees
-            .filter((email: unknown) => typeof email === "string" && email.trim())
-            .map((email: string) => ({
-              email: email.trim().toLowerCase(),
-            })),
-        },
-        reminders: {
-          create: [
-            { remindAt: new Date(startsAt.getTime() - 24 * 60 * 60 * 1000) },
-            { remindAt: new Date(startsAt.getTime() - 60 * 60 * 1000) },
-            { remindAt: new Date(startsAt.getTime() - 15 * 60 * 1000) },
-          ],
-        },
-      },
-      include: {
-        invitees: true,
-        reminders: true,
-      },
-    });
+    await pool.query(
+      `INSERT INTO "Meeting" (id, title, description, "hostEmail", "roomId", "inviteToken",
+        "startsAt", "endsAt", timezone, status, "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())`,
+      [id, title, description, hostEmail, roomId, inviteToken, startsAt, endsAt, timezone, status]
+    );
 
-    return NextResponse.json({
-      meeting: serializeMeeting(origin, meeting),
-      joinLink: buildMeetingLink(origin, meeting.roomId, meeting.inviteToken),
-    });
+    const validInvitees = invitees.filter((e) => typeof e === "string" && e.trim());
+    for (const email of validInvitees) {
+      await pool.query(
+        `INSERT INTO "MeetingInvite" (id, "meetingId", email, status, "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,'PENDING',NOW(),NOW())`,
+        [createId(), id, email.trim().toLowerCase()]
+      );
+    }
+
+    // Reminders: -24h, -1h, -15min
+    for (const offset of [86400000, 3600000, 900000]) {
+      await pool.query(
+        `INSERT INTO "MeetingReminder" (id, "meetingId", "remindAt", channel, "createdAt")
+         VALUES ($1,$2,$3,'EMAIL',NOW())`,
+        [createId(), id, new Date(startsAt.getTime() - offset)]
+      );
+    }
+
+    const joinLink = buildMeetingLink(origin(req), roomId, inviteToken);
+    return NextResponse.json({ id, joinLink });
   } catch (err) {
     console.error("[meetings POST]", err);
-    return NextResponse.json(
-      { error: "db_unavailable", detail: "La base de données est inaccessible. Vérifiez Supabase." },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
   }
 }

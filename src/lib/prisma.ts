@@ -24,7 +24,7 @@ try {
   // not a valid URL — use as-is
 }
 
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: cleanConnectionString,
   // Supabase uses a certificate chain not in Node's default trust store.
   // ssl.rejectUnauthorized=false keeps the connection encrypted (TLS is active)
