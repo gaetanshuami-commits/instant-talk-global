@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 const ThreeBackground = dynamic(() => import("@/components/ThreeBackground"), { ssr: false });
+const CommandPalette = dynamic(() => import("@/components/CommandPalette"), { ssr: false });
 
 const NAV_KEYS = [
   { icon: LayoutDashboard, key: "overview",    href: "/dashboard", exact: true },
@@ -84,6 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }}
     >
       <ThreeBackground />
+      <CommandPalette />
       {/* ── Layout (above 3D canvas) ─────────────────────────── */}
       <div style={{ position: "relative", zIndex: 1, display: "flex", flex: 1, minHeight: "100vh" }}>
       {/* ── Sidebar ─────────────────────────────────────────── */}
@@ -348,6 +350,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <button onClick={() => { setQuery(""); setResults([]); setSearchOpen(false); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", cursor: "pointer", padding: 0, display: "flex" }}>
                   <X size={13} />
                 </button>
+              )}
+              {!query && (
+                <kbd style={{ padding: "2px 7px", borderRadius: "5px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)", fontSize: "11px", fontFamily: "monospace", whiteSpace: "nowrap", pointerEvents: "none" }}>⌘K</kbd>
               )}
             </div>
             {searchOpen && results.length > 0 && (
