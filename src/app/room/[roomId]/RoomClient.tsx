@@ -652,15 +652,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     await ve.warmAudioContext()   // awaité : AudioContext actif avant le premier TTS
     await publishInterpreter()
 
-    // Fermer complètement le track audio Agora pour libérer le hardware mic.
-    // setEnabled(false) seul garde le pipeline WebRTC actif → sur Android,
-    // l'AEC hardware reste en mode VOICE_COMMUNICATION → WSR capte du silence.
-    // close() libère vraiment le mic → WSR obtient l'audio propre.
-    if (tracksRef.current?.audio && clientRef.current) {
-      try { await clientRef.current.unpublish(tracksRef.current.audio) } catch {}
-      try { tracksRef.current.audio.close() } catch {}
-    }
-
+    // Micro laissé ouvert : la voix originale reste audible chez les autres
+    // en même temps que la traduction vocale arrive sur le track interprète.
     setTranslationError(null)
     setIsFallbackActive(false)
     await ve.startTranslation(
@@ -695,22 +688,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (isTranslating) {
       const ve = await getVE()
       await ve.stopTranslation()
-      // Recréer et republier le track audio Agora (fermé au démarrage de la traduction)
-      // Fonctionne même si tracksRef.current était null (caméra mobile failée)
-      if (clientRef.current) {
-        try {
-          const na = await AgoraRTC.createMicrophoneAudioTrack({
-            AEC: true, AGC: true,
-            encoderConfig: { sampleRate: 16000, stereo: false, bitrate: 40 },
-          })
-          if (tracksRef.current) {
-            tracksRef.current = { ...tracksRef.current, audio: na }
-          }
-          if (clientRef.current.connectionState === "CONNECTED") {
-            await clientRef.current.publish(na)
-          }
-        } catch (err) { console.warn("[Mic recreate]", err) }
-      }
+      // Track audio non fermé au démarrage → pas besoin de recréer
       setIsTranslating(false)
       setTranslationError(null)
       setIsFallbackActive(false)
