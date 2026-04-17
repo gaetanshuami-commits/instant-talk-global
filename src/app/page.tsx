@@ -1072,6 +1072,22 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* Extra links */}
+          <div className="mt-8 mb-4 flex flex-wrap gap-x-6 gap-y-2 justify-center">
+            {[
+              { href: "/status",        label: "● Statut" },
+              { href: "/device-check",  label: "Test appareil" },
+              { href: "/pricing",       label: "Tarifs" },
+              { href: "/contact",       label: "Contact" },
+              { href: "/dashboard",     label: "Dashboard" },
+            ].map(({ href, label }) => (
+              <a key={href} href={href} style={{ fontSize: "12px", color: "rgba(148,163,184,0.7)", textDecoration: "none" }}
+                onMouseEnter={(e) => ((e.target as HTMLElement).style.color = "#e2e8f0")}
+                onMouseLeave={(e) => ((e.target as HTMLElement).style.color = "rgba(148,163,184,0.7)")}
+              >{label}</a>
+            ))}
+          </div>
+
           <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-slate-100 pt-7 sm:flex-row">
             <p className="text-xs text-slate-400">
               © {new Date().getFullYear()} Instant Talk Global. {t("footer.rights")}

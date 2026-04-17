@@ -9,11 +9,13 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import {
   LayoutDashboard, Video, Calendar, Users, MessageSquare,
   Radio, Film, BarChart3, Globe, Bell, Search,
-  Plus, ChevronDown, Zap, Mic, Shield, X, User,
+  Plus, ChevronDown, Zap, Mic, Shield, X, User, Activity, Keyboard,
 } from "lucide-react";
 
 const ThreeBackground = dynamic(() => import("@/components/ThreeBackground"), { ssr: false });
-const CommandPalette = dynamic(() => import("@/components/CommandPalette"), { ssr: false });
+const CommandPalette    = dynamic(() => import("@/components/CommandPalette"),    { ssr: false });
+const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"), { ssr: false });
+const NotificationPanel = dynamic(() => import("@/components/NotificationPanel"), { ssr: false });
 
 const NAV_KEYS = [
   { icon: LayoutDashboard, key: "overview",    href: "/dashboard", exact: true },
@@ -86,6 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     >
       <ThreeBackground />
       <CommandPalette />
+      <KeyboardShortcuts />
       {/* ── Layout (above 3D canvas) ─────────────────────────── */}
       <div style={{ position: "relative", zIndex: 1, display: "flex", flex: 1, minHeight: "100vh" }}>
       {/* ── Sidebar ─────────────────────────────────────────── */}
@@ -210,6 +213,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
+
+        {/* Quick links */}
+        <div style={{ padding: "0 8px 6px" }}>
+          <div style={{ height: "1px", background: "rgba(255,255,255,0.05)", marginBottom: "8px" }} />
+          {[
+            { href: "/device-check", icon: Mic,      label: "Test appareil" },
+            { href: "/status",       icon: Activity,  label: "Statut plateforme" },
+          ].map(({ href, icon: Icon, label }) => (
+            <Link key={href} href={href} style={{ textDecoration: "none" }}>
+              <div style={{ height: "36px", borderRadius: "9px", display: "flex", alignItems: "center", gap: "9px", padding: "0 11px", marginBottom: "2px", color: "rgba(255,255,255,0.38)", fontSize: "12.5px", fontWeight: 500 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <Icon size={14} />
+                {label}
+              </div>
+            </Link>
+          ))}
+        </div>
 
         {/* AI badge */}
         <div style={{ padding: "10px 12px" }}>
@@ -395,35 +417,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {/* Notifications */}
-            <div
-              style={{
-                width: "34px",
-                height: "34px",
-                borderRadius: "10px",
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                position: "relative",
-              }}
-            >
-              <Bell size={15} opacity={0.65} />
-              <div
-                style={{
-                  position: "absolute",
-                  top: "7px",
-                  right: "7px",
-                  width: "7px",
-                  height: "7px",
-                  borderRadius: "50%",
-                  background: "#6366f1",
-                  border: "1.5px solid #04070f",
-                  boxShadow: "0 0 6px rgba(99,102,241,0.7)",
-                }}
-              />
-            </div>
+            <NotificationPanel />
 
             {/* Language badge */}
             <div
