@@ -61,31 +61,19 @@ function serializeMeeting(origin: string, meeting: MeetingRecord) {
 }
 
 export async function GET(req: NextRequest) {
-  const meetingModel = (prisma as unknown as { meeting?: MeetingModel }).meeting;
-
-  if (!meetingModel) {
-    return NextResponse.json({ meetings: [], prismaReady: false });
-  }
-
   try {
-    const meetings = await meetingModel.findMany({
+    const meetings = await prisma.meeting.findMany({
       orderBy: { startsAt: "asc" },
-      include: {
-        invitees: true,
-        reminders: true,
-      },
+      include: { invitees: true, reminders: true },
     });
-
-    const origin = req.nextUrl.origin;
 
     return NextResponse.json({
-      meetings: meetings.map((meeting) => serializeMeeting(origin, meeting)),
-      prismaReady: true,
+      meetings: meetings.map((m) => serializeMeeting(req.nextUrl.origin, m)),
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("[meetings GET]", msg);
-    return NextResponse.json({ meetings: [], prismaReady: false, error: "db_unavailable", detail: msg });
+    return NextResponse.json({ meetings: [], error: msg }, { status: 503 });
   }
 }
 
