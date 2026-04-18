@@ -15,9 +15,17 @@ const PRODUCTS: Record<string, string> = {
 
 async function getActivePriceId(productId: string): Promise<string> {
   if (!stripe) throw new Error("Stripe not initialized");
-  const { data } = await stripe.prices.list({ product: productId, active: true, limit: 1 });
-  if (!data[0]) throw new Error(`No active price for product ${productId}`);
-  return data[0].id;
+  const { data } = await stripe.prices.list({
+    product:  productId,
+    active:   true,
+    type:     "recurring",
+    limit:    10,
+  });
+  if (!data.length) throw new Error(`No active recurring price for product ${productId}`);
+  // newest first (Stripe default), but sort explicitly
+  const sorted = [...data].sort((a, b) => b.created - a.created);
+  console.info(`[checkout] product=${productId} prices found=${data.length} using=${sorted[0].id}`);
+  return sorted[0].id;
 }
 
 export async function POST(req: Request) {
