@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripe = stripeKey
@@ -9,12 +10,8 @@ const stripe = stripeKey
   : null;
 
 const PLAN_CONFIG = {
-  premium: {
-    productId: "prod_U84g0h5Ed64X42",
-  },
-  business: {
-    productId: "prod_U84hb0JIHeC5ER",
-  },
+  premium: { productId: "prod_U84g0h5Ed64X42" },
+  business: { productId: "prod_U84hb0JlHeC5ER" },
 } as const;
 
 type CheckoutPlan = keyof typeof PLAN_CONFIG;
@@ -23,18 +20,25 @@ function isCheckoutPlan(value: string): value is CheckoutPlan {
   return value === "premium" || value === "business";
 }
 
-function resolvePlanFromBody(body: Record<string, unknown>): CheckoutPlan | null {
-  const rawPlan = typeof body.plan === "string" ? body.plan.toLowerCase() : null;
-  if (rawPlan && isCheckoutPlan(rawPlan)) return rawPlan;
-  return null;
+function resolvePlan(body: Record<string, unknown>): CheckoutPlan | null {
+  const raw = typeof body.plan === "string" ? body.plan.toLowerCase() : null;
+  return raw && isCheckoutPlan(raw) ? raw : null;
 }
 
-async function getActivePriceId(productId: string): Promise<string> {
+// Returns the most recently created active recurring price for a product.
+async function getLatestActivePriceId(productId: string): Promise<string> {
   if (!stripe) throw new Error("Stripe not initialized");
-  const prices = await stripe.prices.list({ product: productId, active: true, limit: 1 });
-  const price = prices.data[0];
-  if (!price) throw new Error(`No active price found for product ${productId}`);
-  return price.id;
+  const { data } = await stripe.prices.list({
+    product: productId,
+    active: true,
+    type: "recurring",
+    limit: 10,
+  });
+  if (!data.length) throw new Error(`No active recurring price for product ${productId}`);
+  // Stripe returns newest first by default, but sort explicitly to be safe.
+  const sorted = [...data].sort((a, b) => b.created - a.created);
+  console.info(`[checkout] product=${productId} → price=${sorted[0].id} (${sorted.length} active prices found)`);
+  return sorted[0].id;
 }
 
 export async function POST(req: Request) {
@@ -43,17 +47,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
     }
 
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const rawPlan = resolvePlanFromBody(body);
-
+    const body     = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const rawPlan  = resolvePlan(body);
     if (!rawPlan) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    const plan        = PLAN_CONFIG[rawPlan];
     const origin      = new URL(req.url).origin;
     const customerRef = `itr_${crypto.randomUUID()}`;
-    const priceId     = await getActivePriceId(plan.productId);
+    const priceId     = await getLatestActivePriceId(PLAN_CONFIG[rawPlan].productId);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
