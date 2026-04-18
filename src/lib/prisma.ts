@@ -6,10 +6,15 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
-const connectionString = process.env.DATABASE_URL?.trim();
+const connectionString = (
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.POSTGRES_URL_NON_POOLING
+)?.trim();
 
 if (!connectionString) {
-  throw new Error("Missing DATABASE_URL");
+  throw new Error("Missing DATABASE_URL (or POSTGRES_URL)");
 }
 
 // Strip ?sslmode=... from the URL so pg uses our explicit ssl config below.
