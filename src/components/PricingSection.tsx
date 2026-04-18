@@ -6,24 +6,23 @@ const plans = [
     name: "B2C Premium", price: "24", trial: "3 jours gratuits",
     description: "Communication multilingue pour particuliers.",
     features: ["Utilisation illimitée", "Jusqu'à 5 participants", "10 langues disponibles"],
-    priceId: "price_1T9oWtEwh4sBnj54ncKbHx17" 
+    plan: "premium",
   },
   {
     name: "Business", price: "99", trial: "3 jours gratuits",
     description: "Solution idéale pour les équipes.",
     features: ["Jusqu'à 25 utilisateurs", "50 participants par réunion", "20 langues disponibles"],
-    priceId: "price_1T9oXtEwh4sBnj54YgPSDbeU"
-  }
+    plan: "business",
+  },
 ];
 
 export default function PricingSection() {
-  const handleSubscription = async (priceId: string) => {
+  const handleSubscription = async (plan: string) => {
     try {
-      alert("Chargement de Stripe en cours..."); 
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ plan }),
       });
       const data = await res.json();
       
@@ -51,7 +50,7 @@ export default function PricingSection() {
                 {plan.features.map(f => <li key={f} className="text-sm">✓ {f}</li>)}
               </ul>
               <button 
-                onClick={() => handleSubscription(plan.priceId)}
+                onClick={() => handleSubscription(plan.plan)}
                 className="w-full py-3 px-6 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700"
               >
                 Essayer gratuitement
