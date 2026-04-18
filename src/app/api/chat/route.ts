@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { prisma } from "@/lib/prisma";
+import { pool } from "@/lib/prisma";
 import { normalizeAccess } from "@/lib/server-access";
 import { getCapabilities } from "@/lib/planCapabilities";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+export const runtime = "nodejs"
 
-function isActiveStatus(status: string | null | undefined) {
-  return status === "active" || status === "trialing";
-}
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,12 +17,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const message        = body?.message;
     const activeLanguage = body?.activeLanguage || "EN";
+    if (!message) return NextResponse.json({ error: "Missing message" }, { status: 400 });
 
-    if (!message) {
-      return NextResponse.json({ error: "Missing message" }, { status: 400 });
-    }
-
-    // ── Plan check ────────────────────────────────────────────────────────────
     const cookiePlan  = normalizeAccess(req.cookies.get("instanttalk_access")?.value);
     const customerRef = req.cookies.get("instanttalk_customer_ref")?.value || null;
 
@@ -32,29 +26,19 @@ export async function POST(req: NextRequest) {
 
     if (customerRef) {
       try {
-        const subs = await prisma.subscription.findMany({
-          where: {
-            OR: [
-              { stripeCustomerId: customerRef },
-              { customerEmail: customerRef },
-            ],
-          },
-          orderBy: { updatedAt: "desc" },
-          take: 5,
-        });
-        const activeSub = subs.find((s) => isActiveStatus(s.status));
-        if (activeSub) {
-          const caps = getCapabilities(activeSub.plan);
-          summaryLevel = caps.summaryLevel;
-        }
-      } catch {
-        // Non-fatal — fallback to basic summary
-      }
+        const { rows } = await pool.query<{ plan: string; status: string }>(
+          `SELECT plan, status FROM "Subscription"
+           WHERE ("stripeCustomerId"=$1 OR "customerEmail"=$1)
+             AND status IN ('active','trialing')
+           ORDER BY "updatedAt" DESC LIMIT 1`,
+          [customerRef]
+        );
+        if (rows[0]) summaryLevel = getCapabilities(rows[0].plan).summaryLevel;
+      } catch { /* fallback to basic */ }
     } else if (cookiePlan) {
       summaryLevel = getCapabilities(cookiePlan).summaryLevel;
     }
 
-    // ── System prompt varies by plan ─────────────────────────────────────────
     const systemPrompt =
       summaryLevel === "custom"
         ? `You are the enterprise AI assistant inside Instant Talk. Respond in ${activeLanguage}. Provide comprehensive, detailed, and custom-tailored responses with full context and actionable insights.`
@@ -71,17 +55,9 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    return NextResponse.json({
-      reply: completion.choices?.[0]?.message?.content || "",
-      summaryLevel,
-    });
+    return NextResponse.json({ reply: completion.choices?.[0]?.message?.content || "", summaryLevel });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: "Chat request failed",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Chat request failed",
+      details: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
   }
 }

@@ -1,78 +1,58 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { buildMeetingLink } from "@/lib/meetings";
-import { sendMeetingInvitationEmail } from "@/lib/email";
+import { NextResponse } from "next/server"
+import { pool } from "@/lib/prisma"
+import { sendMeetingInvitationEmail } from "@/lib/email"
+import { buildMeetingLink } from "@/lib/meetings"
 
-type InviteeRecord = { email: string }
-type ReminderRecord = {
-  id: string
-  meeting: {
-    title: string
-    roomId: string
-    inviteToken: string
-    startsAt: Date
-    invitees: InviteeRecord[]
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+export async function GET(req: Request) {
+  const secret = new URL(req.url).searchParams.get("secret")
+  if (secret !== process.env.REMINDER_SECRET && process.env.NODE_ENV !== "development") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-}
-type MeetingReminderModel = {
-  findMany: (args: unknown) => Promise<ReminderRecord[]>
-  update: (args: unknown) => Promise<unknown>
-}
 
-export async function POST(req: NextRequest) {
-  const db = prisma as unknown as { meetingReminder: MeetingReminderModel };
-  const now = new Date();
+  const now = new Date()
+  const windowEnd = new Date(now.getTime() + 16 * 60 * 1000)
 
-  const reminders = await db.meetingReminder.findMany({
-    where: {
-      sentAt: null,
-      remindAt: { lte: now },
-    },
-    include: {
-      meeting: {
-        include: {
-          invitees: true,
-        },
-      },
-    },
-  });
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.id AS "reminderId", r."meetingId",
+              m.title, m."hostEmail", m."roomId", m."inviteToken", m."startsAt", m."endsAt",
+              COALESCE(json_agg(i.email) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS "inviteeEmails"
+       FROM "MeetingReminder" r
+       JOIN "Meeting" m ON m.id = r."meetingId"
+       LEFT JOIN "MeetingInvite" i ON i."meetingId" = m.id
+       WHERE r."remindAt" >= $1 AND r."remindAt" <= $2 AND r."sentAt" IS NULL
+       GROUP BY r.id, m.id`,
+      [now, windowEnd]
+    )
 
-  const origin = req.nextUrl.origin;
-  const sentIds: string[] = [];
-
-  for (const reminder of reminders) {
-    const joinLink = buildMeetingLink(
-      origin,
-      reminder.meeting.roomId,
-      reminder.meeting.inviteToken
-    );
-
-    for (const invitee of reminder.meeting.invitees) {
-      await sendMeetingInvitationEmail({
-        to: invitee.email,
-        subject: `Rappel réunion : ${reminder.meeting.title}`,
-        html: `
-          <div style="font-family:Arial,sans-serif">
-            <h2>Rappel réunion</h2>
-            <p>${reminder.meeting.title}</p>
-            <p>Début : ${reminder.meeting.startsAt.toLocaleString("fr-FR")}</p>
-            <p><a href="${joinLink}">Rejoindre maintenant</a></p>
-          </div>
-        `,
-      });
+    const origin = new URL(req.url).origin
+    let sent = 0
+    for (const row of rows) {
+      const joinLink = buildMeetingLink(origin, row.roomId, row.inviteToken)
+      const emails = [row.hostEmail, ...(row.inviteeEmails ?? [])].filter(Boolean)
+      for (const email of emails) {
+        try {
+          await sendMeetingInvitationEmail({
+            to: email,
+            subject: `Rappel : ${row.title} commence bientôt`,
+            html: `<div style="font-family:Arial,sans-serif">
+              <h2>Rappel : ${row.title}</h2>
+              <p>Début dans moins de 15 minutes.</p>
+              <p><a href="${joinLink}">Rejoindre la réunion</a></p>
+            </div>`,
+          })
+          sent++
+        } catch { /* skip */ }
+      }
+      await pool.query(`UPDATE "MeetingReminder" SET "sentAt"=NOW() WHERE id=$1`, [row.reminderId])
     }
 
-    await db.meetingReminder.update({
-      where: { id: reminder.id },
-      data: { sentAt: new Date() },
-    });
-
-    sentIds.push(reminder.id);
+    return NextResponse.json({ processed: rows.length, sent })
+  } catch (err) {
+    console.error("[reminders]", err)
+    return NextResponse.json({ error: "reminder_failed" }, { status: 500 })
   }
-
-  return NextResponse.json({
-    ok: true,
-    sentCount: sentIds.length,
-    sentIds,
-  });
 }

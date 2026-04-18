@@ -1,76 +1,45 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
+import { pool } from "@/lib/prisma";
 import { buildMeetingLink } from "@/lib/meetings";
 import { sendMeetingInvitationEmail } from "@/lib/email";
 
+export const runtime = "nodejs"
+
 type Params = { params: Promise<{ id: string }> };
-type InviteeRecord = { id: string; email: string }
-type MeetingRecord = {
-  id: string
-  title: string
-  roomId: string
-  inviteToken: string
-  startsAt: Date
-  endsAt: Date
-  invitees: InviteeRecord[]
-}
-type MeetingInviteModel = { update: (args: unknown) => Promise<unknown> }
-type MeetingModel = { findUnique: (args: unknown) => Promise<MeetingRecord | null> }
 
 export async function POST(req: NextRequest, ctx: Params) {
-  const db = prisma as unknown as { meeting: MeetingModel; meetingInvite: MeetingInviteModel };
   const { id } = await ctx.params;
 
-  let meeting;
   try {
-    meeting = await db.meeting.findUnique({
-      where: { id },
-      include: { invitees: true },
-    });
-  } catch (err) {
-    console.error("[invite POST db]", err);
-    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
-  }
+    const { rows: meetings } = await pool.query(
+      `SELECT m.*, json_agg(json_build_object('id',i.id,'email',i.email)) FILTER (WHERE i.id IS NOT NULL) AS invitees
+       FROM "Meeting" m LEFT JOIN "MeetingInvite" i ON i."meetingId"=m.id
+       WHERE m.id=$1 GROUP BY m.id`, [id])
 
-  if (!meeting) {
-    return NextResponse.json({ error: "meeting_not_found" }, { status: 404 });
-  }
+    if (!meetings[0]) return NextResponse.json({ error: "meeting_not_found" }, { status: 404 })
+    const meeting = meetings[0]
+    const joinLink = buildMeetingLink(req.nextUrl.origin, meeting.roomId, meeting.inviteToken)
+    const results = []
 
-  const origin = req.nextUrl.origin;
-  const joinLink = buildMeetingLink(origin, meeting.roomId, meeting.inviteToken);
-
-  const results = [];
-
-  for (const invitee of meeting.invitees) {
-    const result = await sendMeetingInvitationEmail({
-      to: invitee.email,
-      subject: `Invitation réunion : ${meeting.title}`,
-      html: `
-        <div style="font-family:Arial,sans-serif">
+    for (const invitee of (meeting.invitees ?? [])) {
+      const result = await sendMeetingInvitationEmail({
+        to: invitee.email,
+        subject: `Invitation réunion : ${meeting.title}`,
+        html: `<div style="font-family:Arial,sans-serif">
           <h2>${meeting.title}</h2>
-          <p>Début : ${meeting.startsAt.toLocaleString("fr-FR")}</p>
-          <p>Fin : ${meeting.endsAt.toLocaleString("fr-FR")}</p>
-          <p><a href="${joinLink}">Rejoindre la réunion</a></p>
-        </div>
-      `,
-    });
-
-    if (result.sent) {
-      await db.meetingInvite.update({
-        where: { id: invitee.id },
-        data: { status: "SENT" },
-      });
+          <p>Début : ${new Date(meeting.startsAt).toLocaleString("fr-FR")}</p>
+          <p>Fin : ${new Date(meeting.endsAt).toLocaleString("fr-FR")}</p>
+          <p><a href="${joinLink}">Rejoindre la réunion</a></p></div>`,
+      })
+      if (result.sent) {
+        await pool.query(`UPDATE "MeetingInvite" SET status='SENT', "updatedAt"=NOW() WHERE id=$1`, [invitee.id])
+      }
+      results.push({ email: invitee.email, ...result })
     }
 
-    results.push({
-      email: invitee.email,
-      ...result,
-    });
+    return NextResponse.json({ ok: true, joinLink, results })
+  } catch (err) {
+    console.error("[invite POST]", err)
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503 })
   }
-
-  return NextResponse.json({
-    ok: true,
-    joinLink,
-    results,
-  });
 }
