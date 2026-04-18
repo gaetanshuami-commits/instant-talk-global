@@ -9,8 +9,8 @@ const stripe = process.env.STRIPE_SECRET_KEY
   : null;
 
 const PRODUCTS: Record<string, string> = {
-  premium:  "prod_U84f2nE8R8Xy7M",
-  business: "prod_U84hb0JlHeC5ER",
+  premium:  "prod_U84g0h5Ed64X42",
+  business: "prod_U84hb0JIHeC5ER",
 };
 
 async function getActivePriceId(productId: string): Promise<string> {
