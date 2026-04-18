@@ -67,23 +67,29 @@ export async function GET(req: NextRequest) {
         const periodEnd    = typeof sub.current_period_end === "number" ? new Date(sub.current_period_end * 1000) : null;
         const trialEnd     = typeof sub.trial_end === "number" ? new Date(sub.trial_end * 1000) : null;
 
-        await pool.query(
-          `INSERT INTO "Subscription"
-             (id,"stripeCustomerId","stripeSubscriptionId",plan,status,"customerEmail",
-              "currentPeriodEnd","trialEndsAt","createdAt","updatedAt")
-           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
-           ON CONFLICT ("stripeSubscriptionId")
-           DO UPDATE SET
-             "stripeCustomerId"=$1, plan=$3, status=$4,
-             "customerEmail"=COALESCE($5,"Subscription"."customerEmail"),
-             "currentPeriodEnd"=$6, "trialEndsAt"=$7, "updatedAt"=NOW()`,
-          [customerId, subId, planFinal, sub.status, email, periodEnd, trialEnd]
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("DB timeout")), 5000)
         );
+        await Promise.race([
+          pool.query(
+            `INSERT INTO "Subscription"
+               (id,"stripeCustomerId","stripeSubscriptionId",plan,status,"customerEmail",
+                "currentPeriodEnd","trialEndsAt","createdAt","updatedAt")
+             VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
+             ON CONFLICT ("stripeSubscriptionId")
+             DO UPDATE SET
+               "stripeCustomerId"=$1, plan=$3, status=$4,
+               "customerEmail"=COALESCE($5,"Subscription"."customerEmail"),
+               "currentPeriodEnd"=$6, "trialEndsAt"=$7, "updatedAt"=NOW()`,
+            [customerId, subId, planFinal, sub.status, email, periodEnd, trialEnd]
+          ),
+          timeout,
+        ]);
 
         plan = planFinal;
       } catch (dbErr) {
-        // Non-bloquant : l'accès sera quand même accordé via cookie
-        console.error("[callback/stripe] DB upsert error:", dbErr);
+        // Non-bloquant : accès accordé via cookie même si DB inaccessible
+        console.error("[callback/stripe] DB upsert error:", (dbErr as Error).message);
       }
     }
   } catch (stripeErr) {

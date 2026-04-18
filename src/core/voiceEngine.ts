@@ -193,8 +193,8 @@ async function streamPCMAudio(
   if (ctx.state === "suspended") await ctx.resume()
 
   const reader = stream.getReader()
-  // 10 ms chunks — premier audio audible ~70 ms plus tôt qu'avec 80 ms
-  const MIN_BYTES = Math.floor(sampleRate * 0.01) * 2
+  // 5 ms chunks — premier audio audible dès le premier mot traduit
+  const MIN_BYTES = Math.floor(sampleRate * 0.005) * 2
   let pending = new Uint8Array(0)
 
   function playChunk(data: Uint8Array): void {
@@ -460,7 +460,7 @@ async function startWebSpeechFallback(
         // ── TTS spéculatif : démarrer ElevenLabs avant isFinal ─────────────
         // Condition : texte > 2 mots (évite les TTS sur fragments courts)
         const cache = prefetchCache
-        if (ttsLang && cache && cache[ttsLang] && text.trim().split(/\s+/).length > 2) {
+        if (ttsLang && cache && cache[ttsLang] && text.trim().split(/\s+/).length >= 1) {
           const rc = getRemoteCount ? getRemoteCount() : 1
           if (rc > 0) enqueueTTS(cache[ttsLang], ttsLang, voiceMap)
         }

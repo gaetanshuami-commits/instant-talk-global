@@ -11,8 +11,6 @@ const plans = [
     key: "premium",
     priceMonthly: 24,
     priceAnnual: 19,
-    stripeMonthly: "https://buy.stripe.com/3cIeVd1le4fL9EddLM1ZS00",
-    stripeAnnual:  "https://buy.stripe.com/3cIeVd1le4fL9EddLM1ZS00",
     simulate: "/success?plan=premium",
     featureKeys: ["premiumF1","premiumF2","premiumF3","premiumF4","premiumF5","premiumF6"],
     limitKeys:   ["premiumLimit1","premiumLimit2"],
@@ -21,8 +19,6 @@ const plans = [
     key: "business",
     priceMonthly: 99,
     priceAnnual: 79,
-    stripeMonthly: "https://buy.stripe.com/3cI6oH1le4fL8A9bDE1ZS01",
-    stripeAnnual:  "https://buy.stripe.com/3cI6oH1le4fL8A9bDE1ZS01",
     simulate: "/success?plan=business",
     featured: true,
     featureKeys: ["businessF1","businessF2","businessF3","businessF4","businessF5","businessF6","businessF7","businessF8"],
@@ -32,8 +28,6 @@ const plans = [
     key: "enterprise",
     priceMonthly: null,
     priceAnnual: null,
-    stripeMonthly: "/contact",
-    stripeAnnual:  "/contact",
     simulate: null,
     featureKeys: ["enterpriseF1","enterpriseF2","enterpriseF3","enterpriseF4","enterpriseF5","enterpriseF6","enterpriseF7","enterpriseF8"],
     limitKeys:   ["enterpriseLimit1","enterpriseLimit2"],
@@ -116,11 +110,22 @@ export default function PricingPage() {
     setSource(new URLSearchParams(window.location.search).get("source"));
   }, []);
 
-  function startCheckout(plan: typeof plans[number]) {
-    const href = annual ? plan.stripeAnnual : plan.stripeMonthly;
-    if (!href || href === "/contact") return;
+  async function startCheckout(plan: typeof plans[number]) {
+    if (plan.key === "enterprise") return;
     setLoadingPlan(plan.key);
-    window.location.href = href;
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: plan.key }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Checkout failed");
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("[Pricing] Checkout error:", err);
+      setLoadingPlan(null);
+    }
   }
 
   return (
@@ -196,7 +201,6 @@ export default function PricingPage() {
               const period = plan.priceMonthly
                 ? annual ? t("pricing.perYear") : t("pricing.perMonth")
                 : "";
-              const href = annual ? plan.stripeAnnual : plan.stripeMonthly;
 
               return (
                 <div
@@ -244,7 +248,7 @@ export default function PricingPage() {
                   <div className="mt-6 flex flex-col gap-2.5">
                     {plan.key === "enterprise" ? (
                       <Link
-                        href={href}
+                        href="/contact"
                         className="flex items-center justify-center rounded-2xl border-2 border-[#0a2540] px-5 py-4 text-sm font-bold text-[#0a2540] transition hover:bg-slate-50"
                       >
                         {cta}

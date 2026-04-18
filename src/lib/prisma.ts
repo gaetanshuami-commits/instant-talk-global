@@ -26,10 +26,12 @@ try {
 
 export const pool = new Pool({
   connectionString: cleanConnectionString,
-  // Supabase uses a certificate chain not in Node's default trust store.
-  // ssl.rejectUnauthorized=false keeps the connection encrypted (TLS is active)
-  // but skips chain verification — standard practice for Supabase + pg.
   ssl: { rejectUnauthorized: false },
+  // Fail fast if DB is unreachable (e.g. Supabase paused) so callers' try/catch
+  // can handle the error promptly instead of hanging until Vercel timeout.
+  connectionTimeoutMillis: 4000,
+  idleTimeoutMillis: 10000,
+  max: 3,
 });
 
 const adapter = new PrismaPg(pool);

@@ -69,19 +69,14 @@ export async function POST(request: Request) {
 
     const resend = getResendClient()
 
-    if (!resend) {
-      console.error("[Contact] Missing RESEND_API_KEY")
-      return NextResponse.json({ error: "missing_resend_api_key" }, { status: 500 })
-    }
-
-    if (!fromAddress) {
-      console.error("[Contact] Missing CONTACT_FROM_EMAIL")
-      return NextResponse.json({ error: "missing_contact_from_email" }, { status: 500 })
-    }
-
-    if (!toAddress) {
-      console.error("[Contact] Missing CONTACT_TO_EMAIL")
-      return NextResponse.json({ error: "missing_contact_to_email" }, { status: 500 })
+    if (!resend || !fromAddress || !toAddress) {
+      const missing = [
+        !resend       && "RESEND_API_KEY",
+        !fromAddress  && "CONTACT_FROM_EMAIL",
+        !toAddress    && "CONTACT_TO_EMAIL",
+      ].filter(Boolean).join(", ")
+      console.error(`[Contact] Missing env vars: ${missing}`)
+      return NextResponse.json({ error: "configuration_error", missing }, { status: 500 })
     }
 
     const subjectName = company ? company : name
