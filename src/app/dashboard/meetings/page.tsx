@@ -35,6 +35,15 @@ function tz() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Paris";
 }
 
+function Toast({ msg, type }: { msg: string; type: "ok" | "err" | "info" }) {
+  const bg = type === "ok" ? "linear-gradient(135deg,#16a34a,#15803d)" : type === "err" ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#2563eb,#4f46e5)";
+  return (
+    <div style={{ position: "fixed", top: 24, right: 24, zIndex: 9999, maxWidth: 360, padding: "14px 20px", borderRadius: 16, background: bg, color: "#fff", fontWeight: 700, fontSize: 15, boxShadow: "0 20px 60px rgba(0,0,0,.4)", pointerEvents: "none" }}>
+      {msg}
+    </div>
+  );
+}
+
 function MeetingsInner() {
   const params = useSearchParams();
   const prefill = params?.get("date") ?? null;
@@ -47,13 +56,22 @@ function MeetingsInner() {
   const [start, setStart] = useState(prefill ? toInput(new Date(`${prefill}T09:00`)) : toInput(new Date(Date.now() + 3600000)));
   const [end, setEnd] = useState(prefill ? toInput(new Date(`${prefill}T10:00`)) : toInput(new Date(Date.now() + 7200000)));
   const [link, setLink] = useState("");
-  const [msg, setMsg] = useState("");
+  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [day, setDay] = useState(prefill ?? new Date().toISOString().slice(0, 10));
   const formRef = useRef<HTMLDivElement>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function notify(msg: string, type: "ok" | "err" | "info" = "info") {
+    setToast({ msg, type });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }
 
   async function load() {
     try {
       const r = await fetch("/api/meetings");
+      if (!r.ok) { setMeetings([]); return; }
       const d = await r.json();
       setMeetings(Array.isArray(d.meetings) ? d.meetings : []);
     } catch {
@@ -68,62 +86,99 @@ function MeetingsInner() {
   const today = useMemo(() => meetings.filter((m) => m.startsAt.slice(0, 10) === day), [meetings, day]);
 
   async function book() {
-    setMsg("Création...");
-    const r = await fetch("/api/meetings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, description: desc, hostEmail: host, startsAt: start, endsAt: end, timezone: tz(), invitees: guests.split(",").map((g) => g.trim()).filter(Boolean) }),
-    });
-    const d = await r.json();
-    if (!r.ok) { setMsg(d.error === "invalid_payload" ? "Remplis titre et email" : "Erreur"); return; }
-    setLink(d.joinLink ?? "");
-    setMsg("Réunion créée ✓");
-    setTitle(""); setDesc(""); setHost(""); setGuests("");
-    load();
+    if (!title.trim()) { notify("Remplis le titre de la réunion", "err"); return; }
+    if (!host.trim()) { notify("Remplis l'email organisateur", "err"); return; }
+    setBusy(true);
+    notify("Création en cours...", "info");
+    try {
+      const r = await fetch("/api/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description: desc, hostEmail: host, startsAt: start, endsAt: end, timezone: tz(), invitees: guests.split(",").map((g) => g.trim()).filter(Boolean) }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        notify(d.error === "invalid_payload" ? "Titre et email requis" : d.error === "db_unavailable" ? "Base de données indisponible" : "Erreur lors de la création", "err");
+        return;
+      }
+      setLink(d.joinLink ?? "");
+      notify("Réunion créée avec succès !", "ok");
+      setTitle(""); setDesc(""); setHost(""); setGuests("");
+      load();
+    } catch {
+      notify("Erreur réseau — vérifiez votre connexion", "err");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function instant() {
-    setMsg("Création...");
+    setBusy(true);
+    notify("Création en cours...", "info");
     const now = new Date();
-    const r = await fetch("/api/meetings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Nouvelle réunion", description: "Instantanée", hostEmail: host || "host@instant-talk.com", startsAt: toInput(now), endsAt: toInput(new Date(now.getTime() + 3600000)), timezone: tz(), invitees: [] }),
-    });
-    const d = await r.json();
-    if (!r.ok) { setMsg("Erreur"); return; }
-    setLink(d.joinLink ?? "");
-    setMsg("Réunion créée ✓");
-    load();
+    try {
+      const r = await fetch("/api/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Nouvelle réunion", description: "Instantanée", hostEmail: host || "host@instant-talk.com", startsAt: toInput(now), endsAt: toInput(new Date(now.getTime() + 3600000)), timezone: tz(), invitees: [] }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        notify(d.error === "db_unavailable" ? "Base de données indisponible" : "Erreur lors de la création", "err");
+        return;
+      }
+      setLink(d.joinLink ?? "");
+      notify("Réunion instantanée créée !", "ok");
+      load();
+    } catch {
+      notify("Erreur réseau — vérifiez votre connexion", "err");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function invite(id: string) {
-    setMsg("Envoi...");
-    const r = await fetch(`/api/meetings/${id}/invite`, { method: "POST" });
-    setMsg(r.ok ? "Invitations envoyées ✓" : "Erreur envoi");
-    if (r.ok) load();
+    notify("Envoi des invitations...", "info");
+    try {
+      const r = await fetch(`/api/meetings/${id}/invite`, { method: "POST" });
+      notify(r.ok ? "Invitations envoyées !" : "Erreur lors de l'envoi", r.ok ? "ok" : "err");
+      if (r.ok) load();
+    } catch {
+      notify("Erreur réseau", "err");
+    }
   }
 
   async function remove(id: string) {
-    await fetch(`/api/meetings/${id}`, { method: "DELETE" });
-    setMsg("Supprimée");
-    load();
+    notify("Suppression...", "info");
+    try {
+      await fetch(`/api/meetings/${id}`, { method: "DELETE" });
+      notify("Réunion supprimée", "ok");
+      load();
+    } catch {
+      notify("Erreur lors de la suppression", "err");
+    }
   }
 
   async function copy(url: string) {
-    await navigator.clipboard.writeText(url);
-    setMsg("Lien copié ✓");
+    try {
+      await navigator.clipboard.writeText(url);
+      notify("Lien copié dans le presse-papier !", "ok");
+    } catch {
+      notify("Impossible de copier le lien", "err");
+    }
   }
 
   /* ── styles ── */
   const S = {
     card: { borderRadius: 28, padding: 24, background: "linear-gradient(180deg,rgba(14,20,38,.96),rgba(10,16,31,.95))", border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 30px 80px rgba(0,0,0,.24)" } as React.CSSProperties,
     input: { height: 54, borderRadius: 16, padding: "0 16px", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 15, width: "100%", boxSizing: "border-box" as const },
-    btn: (bg: string) => ({ height: 40, borderRadius: 999, border: 0, padding: "0 16px", background: bg, color: "#fff", fontWeight: 700, cursor: "pointer" } as React.CSSProperties),
+    btn: (bg: string) => ({ height: 40, borderRadius: 999, border: 0, padding: "0 16px", background: bg, color: "#fff", fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 } as React.CSSProperties),
   };
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", color: "#fff" }}>
+
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
@@ -132,10 +187,17 @@ function MeetingsInner() {
           <p style={{ margin: "10px 0 0", opacity: .72, fontSize: 16 }}>Cockpit de réunions premium.</p>
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <button onClick={instant} style={{ height: 48, padding: "0 20px", borderRadius: 999, border: 0, background: "linear-gradient(135deg,#2563eb,#4f46e5)", color: "#fff", fontWeight: 800, cursor: "pointer", boxShadow: "0 18px 40px rgba(37,99,235,.28)" }}>
-            Nouvelle réunion
+          <button
+            onClick={instant}
+            disabled={busy}
+            style={{ height: 48, padding: "0 20px", borderRadius: 999, border: 0, background: "linear-gradient(135deg,#2563eb,#4f46e5)", color: "#fff", fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 18px 40px rgba(37,99,235,.28)" }}
+          >
+            {busy ? "Création..." : "Nouvelle réunion"}
           </button>
-          <button onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth" })} style={{ height: 48, padding: "0 20px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
+          <button
+            onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth" })}
+            style={{ height: 48, padding: "0 20px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 800, cursor: "pointer" }}
+          >
             Planifier
           </button>
           <span style={{ height: 44, padding: "0 16px", borderRadius: 999, display: "flex", alignItems: "center", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.08)", fontWeight: 700 }}>
@@ -175,16 +237,16 @@ function MeetingsInner() {
               <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} style={S.input} />
               <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} style={S.input} />
             </div>
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <button onClick={book} style={{ height: 50, padding: "0 24px", borderRadius: 999, border: 0, background: "linear-gradient(135deg,#6d74ff,#7c3aed)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
-                Programmer
-              </button>
-              {msg && <span style={{ opacity: .8, fontWeight: 600 }}>{msg}</span>}
-            </div>
+            <button onClick={book} disabled={busy} style={{ height: 50, padding: "0 24px", borderRadius: 999, border: 0, background: "linear-gradient(135deg,#6d74ff,#7c3aed)", color: "#fff", fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+              {busy ? "Création..." : "Programmer"}
+            </button>
             {link && (
               <div style={{ borderRadius: 16, padding: 16, background: "rgba(99,102,241,.1)", border: "1px solid rgba(139,163,255,.2)" }}>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>Lien créé</div>
                 <div style={{ wordBreak: "break-all", opacity: .85, fontSize: 14 }}>{link}</div>
+                <button onClick={() => copy(link)} style={{ marginTop: 10, height: 36, padding: "0 16px", borderRadius: 999, border: 0, background: "rgba(99,102,241,.3)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                  Copier
+                </button>
               </div>
             )}
           </div>
