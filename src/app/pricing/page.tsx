@@ -10,41 +10,33 @@ const PLANS = [
     name:     "Premium",
     price:    24,
     featured: false,
-    features: ["5 participants max", "10 langues", "Traduction vocale temps réel", "Essai 3 jours gratuit"],
+    href:     "https://buy.stripe.com/00w9AT3tmbIdaIh3781ZS04",
+    features: [
+      "5 participants max",
+      "10 langues",
+      "Traduction vocale temps réel",
+      "3 jours d'essai gratuit",
+    ],
   },
   {
     key:      "business",
     name:     "Business",
     price:    99,
     featured: true,
-    features: ["50 participants max", "20 langues", "Toutes les fonctionnalités Premium", "IA avancée", "Support prioritaire", "Essai 3 jours gratuit"],
+    href:     "https://buy.stripe.com/bJebJ12pieUp7w58rs1ZS05",
+    features: [
+      "50 participants max",
+      "20 langues",
+      "Toutes les fonctions Premium",
+      "IA avancée",
+      "Support prioritaire",
+      "3 jours d'essai gratuit",
+    ],
   },
 ];
 
 export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null);
-  const [error,   setError]   = useState<string | null>(null);
-
-  async function startCheckout(plan: string) {
-    setLoading(plan);
-    setError(null);
-    try {
-      const res  = await fetch("/api/stripe/checkout", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ plan }),
-        cache:   "no-store",
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.details || data.error || "Checkout failed");
-      }
-      window.location.href = data.url;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
-      setLoading(null);
-    }
-  }
 
   return (
     <div className="min-h-screen bg-[#f6f9fc]">
@@ -56,15 +48,9 @@ export default function PricingPage() {
             Tarifs simples &amp; transparents
           </h1>
           <p className="mt-4 text-lg text-slate-500">
-            3 jours d&apos;essai gratuit — aucune carte requise avant la fin de l&apos;essai.
+            3 jours d&apos;essai gratuit — aucune carte débitée avant la fin de l&apos;essai.
           </p>
         </div>
-
-        {error && (
-          <div className="mb-8 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-            <strong>Erreur :</strong> {error}
-          </div>
-        )}
 
         <div className="grid gap-8 md:grid-cols-2">
           {PLANS.map((plan) => (
@@ -100,18 +86,17 @@ export default function PricingPage() {
                 ))}
               </ul>
 
-              <button
-                type="button"
-                onClick={() => startCheckout(plan.key)}
-                disabled={loading === plan.key}
-                className={`mt-8 w-full rounded-2xl py-4 text-sm font-bold transition disabled:opacity-60 ${
+              <a
+                href={plan.href}
+                onClick={() => setLoading(plan.key)}
+                className={`mt-8 flex w-full items-center justify-center rounded-2xl py-4 text-sm font-bold transition ${
                   plan.featured
                     ? "bg-violet-600 text-white hover:bg-violet-700"
                     : "bg-[#0a2540] text-white hover:bg-[#16324f]"
                 }`}
               >
                 {loading === plan.key ? "Redirection…" : "Commencer l'essai gratuit"}
-              </button>
+              </a>
             </div>
           ))}
         </div>
