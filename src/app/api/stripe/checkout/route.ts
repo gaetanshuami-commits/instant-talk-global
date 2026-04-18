@@ -8,25 +8,11 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY.trim(), { apiVersion: "2026-02-25.clover" })
   : null;
 
-const PRODUCTS: Record<string, string> = {
-  premium:  "prod_U84g0h5Ed64X42",
-  business: "prod_U84hb0JIHeC5ER",
+// Price IDs confirmed via Stripe API — do not change without verifying in dashboard
+const PRICES: Record<string, string> = {
+  premium:  "price_1T9oWtEwh4sBnj54ncKbHx17",
+  business: "price_1TMDpHEwh4sBnj543iuEIVgV",
 };
-
-async function getActivePriceId(productId: string): Promise<string> {
-  if (!stripe) throw new Error("Stripe not initialized");
-  const { data } = await stripe.prices.list({
-    product:  productId,
-    active:   true,
-    type:     "recurring",
-    limit:    10,
-  });
-  if (!data.length) throw new Error(`No active recurring price for product ${productId}`);
-  // newest first (Stripe default), but sort explicitly
-  const sorted = [...data].sort((a, b) => b.created - a.created);
-  console.info(`[checkout] product=${productId} prices found=${data.length} using=${sorted[0].id}`);
-  return sorted[0].id;
-}
 
 export async function POST(req: Request) {
   if (!stripe) {
@@ -36,27 +22,24 @@ export async function POST(req: Request) {
   let plan: string;
   try {
     const body = await req.json();
-    plan = typeof body.plan === "string" ? body.plan.toLowerCase() : "";
+    plan = typeof body.plan === "string" ? body.plan.toLowerCase().trim() : "";
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  if (!PRODUCTS[plan]) {
+  if (!PRICES[plan]) {
     return NextResponse.json({ error: `Unknown plan: ${plan}` }, { status: 400 });
   }
 
   try {
-    const priceId     = await getActivePriceId(PRODUCTS[plan]);
     const origin      = new URL(req.url).origin;
     const customerRef = `itr_${crypto.randomUUID()}`;
-
-    console.info(`[checkout] plan=${plan} product=${PRODUCTS[plan]} price=${priceId}`);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
       client_reference_id: customerRef,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: PRICES[plan], quantity: 1 }],
       metadata: { plan, customerRef },
       subscription_data: {
         trial_period_days: 3,
@@ -66,6 +49,7 @@ export async function POST(req: Request) {
       cancel_url:  `${origin}/pricing`,
     });
 
+    console.info(`[checkout] plan=${plan} price=${PRICES[plan]} session=${session.id}`);
     return NextResponse.json({ url: session.url, plan, customerRef });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
