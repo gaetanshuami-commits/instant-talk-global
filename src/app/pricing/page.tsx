@@ -10,7 +10,7 @@ const PLANS = [
     name:     "Premium",
     price:    24,
     featured: false,
-    href:     "https://buy.stripe.com/00w9AT3tmbIdaIh3781ZS04",
+    href:     "https://buy.stripe.com/4gMdR9d3W9A53fP2341ZS03",
     features: [
       "5 participants max",
       "10 langues",
