@@ -4,29 +4,27 @@ import { useState } from "react";
 
 const PLANS = [
   {
-    key:      "premium",
-    name:     "Premium",
-    price:    24,
+    key: "premium",
+    name: "Premium",
+    price: 24,
     featured: false,
-    href:     "https://buy.stripe.com/4gMdR9d3W9A53fP2341ZS03",
     features: [
       "5 participants max",
       "10 langues",
-      "Traduction vocale temps réel",
+      "Traduction vocale temps rÃ©el",
       "3 jours d'essai gratuit",
     ],
   },
   {
-    key:      "business",
-    name:     "Business",
-    price:    99,
+    key: "business",
+    name: "Business",
+    price: 99,
     featured: true,
-    href:     "https://buy.stripe.com/bJebJ12pieUp7w58rs1ZS05",
     features: [
       "50 participants max",
       "20 langues",
       "Toutes les fonctions Premium",
-      "IA avancée",
+      "IA avancÃ©e",
       "Support prioritaire",
       "3 jours d'essai gratuit",
     ],
@@ -35,6 +33,31 @@ const PLANS = [
 
 export default function PricingCards() {
   const [loading, setLoading] = useState<string | null>(null);
+
+  async function handleCheckout(plan: string) {
+    try {
+      setLoading(plan);
+
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.url) {
+        alert("Erreur Stripe : " + (data?.error || "Impossible de crÃ©er la session de paiement"));
+        setLoading(null);
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch (error) {
+      alert("Erreur rÃ©seau.");
+      setLoading(null);
+    }
+  }
 
   return (
     <div className="grid gap-8 md:grid-cols-2">
@@ -56,7 +79,7 @@ export default function PricingCards() {
           <h2 className="text-2xl font-extrabold text-[#0a2540]">{plan.name}</h2>
 
           <div className="mt-4 flex items-end gap-1">
-            <span className="text-5xl font-extrabold text-[#0a2540]">{plan.price}€</span>
+            <span className="text-5xl font-extrabold text-[#0a2540]">{plan.price}â‚¬</span>
             <span className="mb-1 text-slate-400">/mois</span>
           </div>
 
@@ -71,17 +94,18 @@ export default function PricingCards() {
             ))}
           </ul>
 
-          <a
-            href={plan.href}
-            onClick={() => setLoading(plan.key)}
-            className={`mt-8 flex w-full items-center justify-center rounded-2xl py-4 text-sm font-bold transition ${
+          <button
+            type="button"
+            onClick={() => handleCheckout(plan.key)}
+            disabled={loading === plan.key}
+            className={`mt-8 flex w-full items-center justify-center rounded-2xl py-4 text-sm font-bold transition disabled:opacity-70 ${
               plan.featured
                 ? "bg-violet-600 text-white hover:bg-violet-700"
                 : "bg-[#0a2540] text-white hover:bg-[#16324f]"
             }`}
           >
-            {loading === plan.key ? "Redirection…" : "Commencer l'essai gratuit"}
-          </a>
+            {loading === plan.key ? "Redirection..." : "Commencer l'essai gratuit"}
+          </button>
         </div>
       ))}
     </div>
