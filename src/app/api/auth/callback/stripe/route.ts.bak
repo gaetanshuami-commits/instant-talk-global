@@ -98,11 +98,10 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 3. Générer un roomId et construire la réponse ─────────────────────────
-    const dashboardUrl = new URL("/dashboard", origin);
-  dashboardUrl.searchParams.set("checkout", "success");
-  dashboardUrl.searchParams.set("plan", plan);
+  const roomId   = `room-${Math.random().toString(36).slice(2, 10)}`;
+  const roomUrl  = `${origin}/room/${roomId}?host=1`;
 
-  const response = NextResponse.redirect(dashboardUrl, { status: 302 });
+  const response = NextResponse.redirect(roomUrl, { status: 302 });
 
   // Cookies HTTP côté serveur — inclus dans la requête suivante (GET /room/xxx)
   // → le middleware lit instantanément "instanttalk_access" sans JS client
@@ -126,4 +125,3 @@ function redirectToSuccess(origin: string, plan: string, sessionId: string | nul
   if (sessionId) url.searchParams.set("session_id", sessionId);
   return NextResponse.redirect(url.toString(), { status: 302 });
 }
-
