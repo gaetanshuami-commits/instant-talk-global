@@ -95,7 +95,7 @@ export async function POST(req: Request) {
           customerRef,
         },
       },
-      success_url: `${origin}/success?plan=${rawPlan}&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${origin}/api/auth/callback/stripe?plan=${rawPlan}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/pricing`,
     });
 
