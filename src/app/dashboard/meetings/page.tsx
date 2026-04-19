@@ -52,9 +52,13 @@ function MeetingsInner() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [host, setHost] = useState(() => {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem("instanttalk_host_email") || "";
-});
+    if (typeof window === "undefined") return "";
+    const saved = window.localStorage.getItem("instanttalk_host_email");
+    if (saved) return saved;
+    // Try to recover email from cookie instanttalk_customer_email if set
+    const match = document.cookie.match(/instanttalk_customer_email=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  });
   const [guests, setGuests] = useState("");
   const [start, setStart] = useState(prefill ? toInput(new Date(`${prefill}T09:00`)) : toInput(new Date(Date.now() + 3600000)));
   const [end, setEnd] = useState(prefill ? toInput(new Date(`${prefill}T10:00`)) : toInput(new Date(Date.now() + 7200000)));
@@ -122,16 +126,16 @@ useEffect(() => {
       const d = await r.json();
 
       if (!r.ok) {
-        notify(
-          d.error === "invalid_payload"
-            ? "Titre, email et dates valides requis"
-            : d.error === "invalid_meeting_range"
-            ? "L'heure de fin doit être après l'heure de début"
-            : d.error === "db_unavailable"
-            ? "Base de données indisponible"
-            : "Erreur lors de la création",
-          "err"
-        );
+        const msg =
+          d.error === "invalid_payload"      ? "Titre, email et dates valides requis" :
+          d.error === "invalid_meeting_range" ? "L'heure de fin doit être après l'heure de début" :
+          d.error === "schema_missing"        ? "Tables DB manquantes — relancer un déploiement Vercel" :
+          d.error === "connection_refused"    ? "Connexion DB refusée — vérifiez Supabase" :
+          d.error === "connection_timeout"    ? "Délai connexion DB dépassé — réessayez" :
+          d.error === "duplicate_entry"       ? "Une réunion avec ce lien existe déjà — réessayez" :
+          d.detail                            ? `Erreur DB : ${d.detail.slice(0, 120)}` :
+                                               "Erreur lors de la création";
+        notify(msg, "err");
         return;
       }
 
@@ -178,14 +182,14 @@ useEffect(() => {
       const d = await r.json();
 
       if (!r.ok) {
-        notify(
-          d.error === "invalid_payload"
-            ? "Email organisateur requis"
-            : d.error === "db_unavailable"
-            ? "Base de données indisponible"
-            : "Erreur lors de la création",
-          "err"
-        );
+        const msg =
+          d.error === "invalid_payload"   ? "Email organisateur requis" :
+          d.error === "schema_missing"    ? "Tables DB manquantes — relancer un déploiement Vercel" :
+          d.error === "connection_refused"? "Connexion DB refusée — vérifiez Supabase" :
+          d.error === "connection_timeout"? "Délai connexion DB dépassé — réessayez" :
+          d.detail                        ? `Erreur DB : ${d.detail.slice(0, 120)}` :
+                                           "Erreur lors de la création";
+        notify(msg, "err");
         return;
       }
 

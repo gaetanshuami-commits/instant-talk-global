@@ -50,8 +50,9 @@ export async function GET(req: NextRequest) {
       })),
     });
   } catch (err) {
-    console.error("[meetings GET]", err);
-    return NextResponse.json({ meetings: [] }, { status: 503 });
+    const msg = (err as Error)?.message ?? "";
+    console.error("[meetings GET]", msg);
+    return NextResponse.json({ meetings: [], error: msg.slice(0, 200) }, { status: 503 });
   }
 }
 
@@ -106,7 +107,15 @@ export async function POST(req: NextRequest) {
     const joinLink = buildMeetingLink(req.nextUrl.origin, roomId, inviteToken);
     return NextResponse.json({ id, joinLink });
   } catch (err) {
-    console.error("[meetings POST]", err);
-    return NextResponse.json({ error: "db_unavailable" }, { status: 503 });
+    const msg = (err as Error)?.message ?? "";
+    const code =
+      msg.includes("does not exist")        ? "schema_missing"       :
+      msg.includes("ECONNREFUSED")           ? "connection_refused"   :
+      msg.includes("timeout")               ? "connection_timeout"   :
+      msg.includes("violates unique")        ? "duplicate_entry"      :
+      msg.includes("violates not-null")      ? "missing_required"     :
+      "db_unavailable";
+    console.error("[meetings POST]", code, msg);
+    return NextResponse.json({ error: code, detail: msg.slice(0, 300) }, { status: 503 });
   }
 }

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "lint:backend": "eslint src/app/api src/lib/email.ts src/lib/prisma.ts src/lib/access.ts src/lib/server-access.ts src/lib/planCapabilities.ts src/lib/meetings.ts",
