@@ -12,6 +12,11 @@ export function buildMeetingLink(origin: string, roomId: string, inviteToken: st
   return `${origin}/room/${roomId}?invite=${inviteToken}`;
 }
 
+// Shareable guest join link — no subscription required
+export function buildJoinLink(origin: string, roomId: string, inviteToken: string) {
+  return `${origin}/join/${roomId}?t=${inviteToken}`;
+}
+
 export function meetingStatusFromDates(startsAt: Date, endsAt: Date) {
   const now = Date.now();
 

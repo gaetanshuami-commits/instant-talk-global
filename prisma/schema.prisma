@@ -15,18 +15,16 @@ model Subscription {
   status               String
   customerEmail        String?
   currentPeriodEnd     DateTime?
-  trialEndsAt          DateTime?
-  enterpriseEnabled    Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  trialEndsAt          DateTime?
+  enterpriseEnabled    Boolean   @default(false)
 
   @@index([plan])
   @@index([status])
   @@index([customerEmail])
 }
 
-// Tracks active participants per room channel.
-// Upserted at token generation; expires naturally (joinedAt > 2h = inactive).
 model RoomSlot {
   id          String   @id @default(cuid())
   channelName String
@@ -88,25 +86,6 @@ model MeetingReminder {
   @@index([sentAt])
 }
 
-enum MeetingStatus {
-  SCHEDULED
-  LIVE
-  ENDED
-  CANCELLED
-}
-
-enum InviteStatus {
-  PENDING
-  SENT
-  ACCEPTED
-  DECLINED
-}
-
-enum ReminderChannel {
-  EMAIL
-}
-
-// ── Contacts ──────────────────────────────────────────────────────────────────
 model Contact {
   id          String   @id @default(cuid())
   customerRef String
@@ -125,7 +104,6 @@ model Contact {
   @@index([customerRef])
 }
 
-// ── Chat ──────────────────────────────────────────────────────────────────────
 model ChatRoom {
   id          String        @id @default(cuid())
   customerRef String
@@ -152,7 +130,6 @@ model ChatMessage {
   @@index([createdAt])
 }
 
-// ── Webinaires ────────────────────────────────────────────────────────────────
 model Webinar {
   id           String        @id @default(cuid())
   customerRef  String
@@ -173,17 +150,34 @@ model Webinar {
   @@index([startsAt])
 }
 
-enum WebinarStatus {
-  UPCOMING
-  LIVE
-  ENDED
-  CANCELLED
-}
-
-// ── Paramètres utilisateur ────────────────────────────────────────────────────
 model UserSettings {
   id          String   @id @default(cuid())
   customerRef String   @unique
   data        Json     @default("{}")
   updatedAt   DateTime @updatedAt
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum InviteStatus {
+  PENDING
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
+enum ReminderChannel {
+  EMAIL
+}
+
+enum WebinarStatus {
+  UPCOMING
+  LIVE
+  ENDED
+  CANCELLED
 }

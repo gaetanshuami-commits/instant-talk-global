@@ -11,6 +11,7 @@ import {
   Radio, Film, BarChart3, Globe, Bell, Search,
   Plus, ChevronDown, Zap, Mic, Shield, X, User, Activity, Keyboard,
 } from "lucide-react";
+import { getCustomerRef, setCustomerRef } from "@/lib/access";
 
 const ThreeBackground = dynamic(() => import("@/components/ThreeBackground"), { ssr: false });
 const CommandPalette    = dynamic(() => import("@/components/CommandPalette"),    { ssr: false });
@@ -44,6 +45,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Ensure customerRef cookie is always in sync with localStorage.
+  // If only localStorage has the value (cookie cleared after browser restart),
+  // re-set it so server-side APIs (meetings POST) can read it from the cookie.
+  useEffect(() => {
+    const existing = getCustomerRef();
+    if (existing) {
+      setCustomerRef(existing); // re-sync cookie from localStorage
+    } else {
+      const id = `user_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+      setCustomerRef(id);
+    }
+  }, []);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

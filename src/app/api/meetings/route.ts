@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { pool } from "@/lib/prisma";
-import { buildMeetingLink, createInviteToken, createMeetingRoomId, meetingStatusFromDates } from "@/lib/meetings";
+import prisma from "@/lib/prisma";
+import { buildMeetingLink, buildJoinLink, createInviteToken, createMeetingRoomId, meetingStatusFromDates } from "@/lib/meetings";
 import crypto from "node:crypto";
 
 function newId() {
@@ -10,9 +10,9 @@ function newId() {
 }
 
 /* ── Self-healing schema ── */
-const g = globalThis as unknown as { _meetingSchemaReady?: boolean };
+const g = globalThis as unknown as { _meetingSchemaV2Ready?: boolean };
 async function ensureSchema() {
-  if (g._meetingSchemaReady) return;
+  if (g._meetingSchemaV2Ready) return;
   const stmts = [
     `DO $$ BEGIN CREATE TYPE "MeetingStatus" AS ENUM ('SCHEDULED','LIVE','ENDED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
     `DO $$ BEGIN CREATE TYPE "InviteStatus" AS ENUM ('PENDING','SENT','ACCEPTED','DECLINED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
@@ -48,31 +48,43 @@ async function ensureSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS "MeetingReminder_remindAt_idx" ON "MeetingReminder"("remindAt")`,
     `DO $$ BEGIN ALTER TABLE "MeetingReminder" ADD CONSTRAINT "MeetingReminder_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "hostLastSeen" TIMESTAMP(3)`,
+    `ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "maxGuests" INTEGER NOT NULL DEFAULT 50`,
+    `ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "customerRef" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "Meeting_customerRef_idx" ON "Meeting"("customerRef")`,
   ];
   for (const sql of stmts) {
-    try { await pool.query(sql); } catch { /* ignore individual failures */ }
+    try { await prisma.$queryRawUnsafe(sql); } catch { /* ignore individual failures */ }
   }
-  g._meetingSchemaReady = true;
+  g._meetingSchemaV2Ready = true;
+}
+
+function customerRef(req: NextRequest) {
+  return req.cookies.get("instanttalk_customer_ref")?.value?.trim() || null;
 }
 
 export async function GET(req: NextRequest) {
   try {
     await ensureSchema();
-    const { rows: meetings } = await pool.query<{
-      id: string; title: string; description: string | null;
-      hostEmail: string; roomId: string; inviteToken: string;
-      startsAt: Date; endsAt: Date; timezone: string; status: string;
-    }>(
-      `SELECT id, title, description, "hostEmail", "roomId", "inviteToken",
-              "startsAt", "endsAt", timezone, status
-       FROM "Meeting" ORDER BY "startsAt" ASC`
-    );
+    const cRef = customerRef(req);
+    const meetings = cRef
+      ? await prisma.$queryRawUnsafe<{
+          id: string; title: string; description: string | null;
+          hostEmail: string; roomId: string; inviteToken: string;
+          startsAt: Date; endsAt: Date; timezone: string; status: string;
+        }[]>(
+          `SELECT id, title, description, "hostEmail", "roomId", "inviteToken",
+                  "startsAt", "endsAt", timezone, status
+           FROM "Meeting" WHERE "customerRef" = $1 ORDER BY "startsAt" ASC`,
+          cRef
+        )
+      : [];
 
     let invitees: { id: string; meetingId: string; email: string; status: string }[] = [];
     if (meetings.length > 0) {
-      const { rows } = await pool.query<{ id: string; meetingId: string; email: string; status: string }>(
+      const rows = await prisma.$queryRawUnsafe<{ id: string; meetingId: string; email: string; status: string }[]>(
         `SELECT id, "meetingId", email, status FROM "MeetingInvite" WHERE "meetingId" = ANY($1)`,
-        [meetings.map((m) => m.id)]
+        meetings.map((m) => m.id)
       );
       invitees = rows;
     }
@@ -96,6 +108,7 @@ export async function GET(req: NextRequest) {
         status: m.status,
         invitees: (invByMeeting[m.id] ?? []).map((i) => ({ id: i.id, email: i.email, status: i.status })),
         joinLink: buildMeetingLink(req.nextUrl.origin, m.roomId, m.inviteToken),
+        guestLink: buildJoinLink(req.nextUrl.origin, m.roomId, m.inviteToken),
       })),
     });
   } catch (err) {
@@ -109,6 +122,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
+    const cRef = customerRef(req);
+    if (!cRef) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
     const body = await req.json();
 
     const title = String(body.title || "").trim();
@@ -131,32 +148,33 @@ export async function POST(req: NextRequest) {
     const inviteToken = createInviteToken();
     const status = meetingStatusFromDates(startsAt, endsAt);
 
-    await pool.query(
+    await prisma.$queryRawUnsafe(
       `INSERT INTO "Meeting"
          (id, title, description, "hostEmail", "roomId", "inviteToken",
-          "startsAt", "endsAt", timezone, status, "createdAt", "updatedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::"MeetingStatus",NOW(),NOW())`,
-      [id, title, description, hostEmail, roomId, inviteToken, startsAt, endsAt, timezone, status]
+          "startsAt", "endsAt", timezone, status, "customerRef", "createdAt", "updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::"MeetingStatus",$11,NOW(),NOW())`,
+      id, title, description, hostEmail, roomId, inviteToken, startsAt, endsAt, timezone, status, cRef
     );
 
     for (const email of invitees.filter((e) => typeof e === "string" && e.trim())) {
-      await pool.query(
+      await prisma.$queryRawUnsafe(
         `INSERT INTO "MeetingInvite" (id, "meetingId", email, status, "createdAt", "updatedAt")
          VALUES ($1,$2,$3,'PENDING'::"InviteStatus",NOW(),NOW())`,
-        [newId(), id, email.trim().toLowerCase()]
+        newId(), id, email.trim().toLowerCase()
       );
     }
 
     for (const offset of [86400000, 3600000, 900000]) {
-      await pool.query(
+      await prisma.$queryRawUnsafe(
         `INSERT INTO "MeetingReminder" (id, "meetingId", "remindAt", channel, "createdAt")
          VALUES ($1,$2,$3,'EMAIL'::"ReminderChannel",NOW())`,
-        [newId(), id, new Date(startsAt.getTime() - offset)]
+        newId(), id, new Date(startsAt.getTime() - offset)
       );
     }
 
     const joinLink = buildMeetingLink(req.nextUrl.origin, roomId, inviteToken);
-    return NextResponse.json({ id, joinLink });
+    const guestLink = buildJoinLink(req.nextUrl.origin, roomId, inviteToken);
+    return NextResponse.json({ id, joinLink, guestLink });
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
     const code =

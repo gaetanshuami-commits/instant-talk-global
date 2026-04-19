@@ -32,10 +32,10 @@ export type SubscriptionMinAggregateOutputType = {
   status: string | null
   customerEmail: string | null
   currentPeriodEnd: Date | null
-  trialEndsAt: Date | null
-  enterpriseEnabled: boolean | null
   createdAt: Date | null
   updatedAt: Date | null
+  trialEndsAt: Date | null
+  enterpriseEnabled: boolean | null
 }
 
 export type SubscriptionMaxAggregateOutputType = {
@@ -46,10 +46,10 @@ export type SubscriptionMaxAggregateOutputType = {
   status: string | null
   customerEmail: string | null
   currentPeriodEnd: Date | null
-  trialEndsAt: Date | null
-  enterpriseEnabled: boolean | null
   createdAt: Date | null
   updatedAt: Date | null
+  trialEndsAt: Date | null
+  enterpriseEnabled: boolean | null
 }
 
 export type SubscriptionCountAggregateOutputType = {
@@ -60,10 +60,10 @@ export type SubscriptionCountAggregateOutputType = {
   status: number
   customerEmail: number
   currentPeriodEnd: number
-  trialEndsAt: number
-  enterpriseEnabled: number
   createdAt: number
   updatedAt: number
+  trialEndsAt: number
+  enterpriseEnabled: number
   _all: number
 }
 
@@ -76,10 +76,10 @@ export type SubscriptionMinAggregateInputType = {
   status?: true
   customerEmail?: true
   currentPeriodEnd?: true
-  trialEndsAt?: true
-  enterpriseEnabled?: true
   createdAt?: true
   updatedAt?: true
+  trialEndsAt?: true
+  enterpriseEnabled?: true
 }
 
 export type SubscriptionMaxAggregateInputType = {
@@ -90,10 +90,10 @@ export type SubscriptionMaxAggregateInputType = {
   status?: true
   customerEmail?: true
   currentPeriodEnd?: true
-  trialEndsAt?: true
-  enterpriseEnabled?: true
   createdAt?: true
   updatedAt?: true
+  trialEndsAt?: true
+  enterpriseEnabled?: true
 }
 
 export type SubscriptionCountAggregateInputType = {
@@ -104,10 +104,10 @@ export type SubscriptionCountAggregateInputType = {
   status?: true
   customerEmail?: true
   currentPeriodEnd?: true
-  trialEndsAt?: true
-  enterpriseEnabled?: true
   createdAt?: true
   updatedAt?: true
+  trialEndsAt?: true
+  enterpriseEnabled?: true
   _all?: true
 }
 
@@ -191,10 +191,10 @@ export type SubscriptionGroupByOutputType = {
   status: string
   customerEmail: string | null
   currentPeriodEnd: Date | null
-  trialEndsAt: Date | null
-  enterpriseEnabled: boolean
   createdAt: Date
   updatedAt: Date
+  trialEndsAt: Date | null
+  enterpriseEnabled: boolean
   _count: SubscriptionCountAggregateOutputType | null
   _min: SubscriptionMinAggregateOutputType | null
   _max: SubscriptionMaxAggregateOutputType | null
@@ -226,10 +226,10 @@ export type SubscriptionWhereInput = {
   status?: Prisma.StringFilter<"Subscription"> | string
   customerEmail?: Prisma.StringNullableFilter<"Subscription"> | string | null
   currentPeriodEnd?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
-  trialEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
-  enterpriseEnabled?: Prisma.BoolFilter<"Subscription"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
+  trialEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
+  enterpriseEnabled?: Prisma.BoolFilter<"Subscription"> | boolean
 }
 
 export type SubscriptionOrderByWithRelationInput = {
@@ -240,10 +240,10 @@ export type SubscriptionOrderByWithRelationInput = {
   status?: Prisma.SortOrder
   customerEmail?: Prisma.SortOrderInput | Prisma.SortOrder
   currentPeriodEnd?: Prisma.SortOrderInput | Prisma.SortOrder
-  trialEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  enterpriseEnabled?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  trialEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  enterpriseEnabled?: Prisma.SortOrder
 }
 
 export type SubscriptionWhereUniqueInput = Prisma.AtLeast<{
@@ -257,10 +257,10 @@ export type SubscriptionWhereUniqueInput = Prisma.AtLeast<{
   status?: Prisma.StringFilter<"Subscription"> | string
   customerEmail?: Prisma.StringNullableFilter<"Subscription"> | string | null
   currentPeriodEnd?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
-  trialEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
-  enterpriseEnabled?: Prisma.BoolFilter<"Subscription"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Subscription"> | Date | string
+  trialEndsAt?: Prisma.DateTimeNullableFilter<"Subscription"> | Date | string | null
+  enterpriseEnabled?: Prisma.BoolFilter<"Subscription"> | boolean
 }, "id" | "stripeCustomerId" | "stripeSubscriptionId">
 
 export type SubscriptionOrderByWithAggregationInput = {
@@ -271,10 +271,10 @@ export type SubscriptionOrderByWithAggregationInput = {
   status?: Prisma.SortOrder
   customerEmail?: Prisma.SortOrderInput | Prisma.SortOrder
   currentPeriodEnd?: Prisma.SortOrderInput | Prisma.SortOrder
-  trialEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  enterpriseEnabled?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  trialEndsAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  enterpriseEnabled?: Prisma.SortOrder
   _count?: Prisma.SubscriptionCountOrderByAggregateInput
   _max?: Prisma.SubscriptionMaxOrderByAggregateInput
   _min?: Prisma.SubscriptionMinOrderByAggregateInput
@@ -291,10 +291,10 @@ export type SubscriptionScalarWhereWithAggregatesInput = {
   status?: Prisma.StringWithAggregatesFilter<"Subscription"> | string
   customerEmail?: Prisma.StringNullableWithAggregatesFilter<"Subscription"> | string | null
   currentPeriodEnd?: Prisma.DateTimeNullableWithAggregatesFilter<"Subscription"> | Date | string | null
-  trialEndsAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Subscription"> | Date | string | null
-  enterpriseEnabled?: Prisma.BoolWithAggregatesFilter<"Subscription"> | boolean
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Subscription"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Subscription"> | Date | string
+  trialEndsAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Subscription"> | Date | string | null
+  enterpriseEnabled?: Prisma.BoolWithAggregatesFilter<"Subscription"> | boolean
 }
 
 export type SubscriptionCreateInput = {
@@ -305,10 +305,10 @@ export type SubscriptionCreateInput = {
   status: string
   customerEmail?: string | null
   currentPeriodEnd?: Date | string | null
-  trialEndsAt?: Date | string | null
-  enterpriseEnabled?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
+  trialEndsAt?: Date | string | null
+  enterpriseEnabled?: boolean
 }
 
 export type SubscriptionUncheckedCreateInput = {
@@ -319,10 +319,10 @@ export type SubscriptionUncheckedCreateInput = {
   status: string
   customerEmail?: string | null
   currentPeriodEnd?: Date | string | null
-  trialEndsAt?: Date | string | null
-  enterpriseEnabled?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
+  trialEndsAt?: Date | string | null
+  enterpriseEnabled?: boolean
 }
 
 export type SubscriptionUpdateInput = {
@@ -333,10 +333,10 @@ export type SubscriptionUpdateInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   customerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   currentPeriodEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type SubscriptionUncheckedUpdateInput = {
@@ -347,10 +347,10 @@ export type SubscriptionUncheckedUpdateInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   customerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   currentPeriodEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type SubscriptionCreateManyInput = {
@@ -361,10 +361,10 @@ export type SubscriptionCreateManyInput = {
   status: string
   customerEmail?: string | null
   currentPeriodEnd?: Date | string | null
-  trialEndsAt?: Date | string | null
-  enterpriseEnabled?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
+  trialEndsAt?: Date | string | null
+  enterpriseEnabled?: boolean
 }
 
 export type SubscriptionUpdateManyMutationInput = {
@@ -375,10 +375,10 @@ export type SubscriptionUpdateManyMutationInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   customerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   currentPeriodEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type SubscriptionUncheckedUpdateManyInput = {
@@ -389,10 +389,10 @@ export type SubscriptionUncheckedUpdateManyInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   customerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   currentPeriodEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  trialEndsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  enterpriseEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type SubscriptionCountOrderByAggregateInput = {
@@ -403,10 +403,10 @@ export type SubscriptionCountOrderByAggregateInput = {
   status?: Prisma.SortOrder
   customerEmail?: Prisma.SortOrder
   currentPeriodEnd?: Prisma.SortOrder
-  trialEndsAt?: Prisma.SortOrder
-  enterpriseEnabled?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  trialEndsAt?: Prisma.SortOrder
+  enterpriseEnabled?: Prisma.SortOrder
 }
 
 export type SubscriptionMaxOrderByAggregateInput = {
@@ -417,10 +417,10 @@ export type SubscriptionMaxOrderByAggregateInput = {
   status?: Prisma.SortOrder
   customerEmail?: Prisma.SortOrder
   currentPeriodEnd?: Prisma.SortOrder
-  trialEndsAt?: Prisma.SortOrder
-  enterpriseEnabled?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  trialEndsAt?: Prisma.SortOrder
+  enterpriseEnabled?: Prisma.SortOrder
 }
 
 export type SubscriptionMinOrderByAggregateInput = {
@@ -431,10 +431,10 @@ export type SubscriptionMinOrderByAggregateInput = {
   status?: Prisma.SortOrder
   customerEmail?: Prisma.SortOrder
   currentPeriodEnd?: Prisma.SortOrder
-  trialEndsAt?: Prisma.SortOrder
-  enterpriseEnabled?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  trialEndsAt?: Prisma.SortOrder
+  enterpriseEnabled?: Prisma.SortOrder
 }
 
 export type StringFieldUpdateOperationsInput = {
@@ -449,12 +449,12 @@ export type NullableDateTimeFieldUpdateOperationsInput = {
   set?: Date | string | null
 }
 
-export type BoolFieldUpdateOperationsInput = {
-  set?: boolean
-}
-
 export type DateTimeFieldUpdateOperationsInput = {
   set?: Date | string
+}
+
+export type BoolFieldUpdateOperationsInput = {
+  set?: boolean
 }
 
 
@@ -467,10 +467,10 @@ export type SubscriptionSelect<ExtArgs extends runtime.Types.Extensions.Internal
   status?: boolean
   customerEmail?: boolean
   currentPeriodEnd?: boolean
-  trialEndsAt?: boolean
-  enterpriseEnabled?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  trialEndsAt?: boolean
+  enterpriseEnabled?: boolean
 }, ExtArgs["result"]["subscription"]>
 
 export type SubscriptionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -481,10 +481,10 @@ export type SubscriptionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   status?: boolean
   customerEmail?: boolean
   currentPeriodEnd?: boolean
-  trialEndsAt?: boolean
-  enterpriseEnabled?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  trialEndsAt?: boolean
+  enterpriseEnabled?: boolean
 }, ExtArgs["result"]["subscription"]>
 
 export type SubscriptionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -495,10 +495,10 @@ export type SubscriptionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   status?: boolean
   customerEmail?: boolean
   currentPeriodEnd?: boolean
-  trialEndsAt?: boolean
-  enterpriseEnabled?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  trialEndsAt?: boolean
+  enterpriseEnabled?: boolean
 }, ExtArgs["result"]["subscription"]>
 
 export type SubscriptionSelectScalar = {
@@ -509,13 +509,13 @@ export type SubscriptionSelectScalar = {
   status?: boolean
   customerEmail?: boolean
   currentPeriodEnd?: boolean
-  trialEndsAt?: boolean
-  enterpriseEnabled?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  trialEndsAt?: boolean
+  enterpriseEnabled?: boolean
 }
 
-export type SubscriptionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "stripeCustomerId" | "stripeSubscriptionId" | "plan" | "status" | "customerEmail" | "currentPeriodEnd" | "trialEndsAt" | "enterpriseEnabled" | "createdAt" | "updatedAt", ExtArgs["result"]["subscription"]>
+export type SubscriptionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "stripeCustomerId" | "stripeSubscriptionId" | "plan" | "status" | "customerEmail" | "currentPeriodEnd" | "createdAt" | "updatedAt" | "trialEndsAt" | "enterpriseEnabled", ExtArgs["result"]["subscription"]>
 
 export type $SubscriptionPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Subscription"
@@ -528,10 +528,10 @@ export type $SubscriptionPayload<ExtArgs extends runtime.Types.Extensions.Intern
     status: string
     customerEmail: string | null
     currentPeriodEnd: Date | null
-    trialEndsAt: Date | null
-    enterpriseEnabled: boolean
     createdAt: Date
     updatedAt: Date
+    trialEndsAt: Date | null
+    enterpriseEnabled: boolean
   }, ExtArgs["result"]["subscription"]>
   composites: {}
 }
@@ -962,10 +962,10 @@ export interface SubscriptionFieldRefs {
   readonly status: Prisma.FieldRef<"Subscription", 'String'>
   readonly customerEmail: Prisma.FieldRef<"Subscription", 'String'>
   readonly currentPeriodEnd: Prisma.FieldRef<"Subscription", 'DateTime'>
-  readonly trialEndsAt: Prisma.FieldRef<"Subscription", 'DateTime'>
-  readonly enterpriseEnabled: Prisma.FieldRef<"Subscription", 'Boolean'>
   readonly createdAt: Prisma.FieldRef<"Subscription", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Subscription", 'DateTime'>
+  readonly trialEndsAt: Prisma.FieldRef<"Subscription", 'DateTime'>
+  readonly enterpriseEnabled: Prisma.FieldRef<"Subscription", 'Boolean'>
 }
     
 

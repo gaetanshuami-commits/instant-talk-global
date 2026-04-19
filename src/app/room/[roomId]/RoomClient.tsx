@@ -32,6 +32,12 @@ async function getVE(): Promise<VoiceEngineModule> {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RoomClient({ roomId }: { roomId: string }) {
+  // Read guest mode from URL — avoids needing Suspense in page.tsx
+  const isGuest = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("guest") === "1"
+  const guestToken = typeof window !== "undefined"
+    ? (new URLSearchParams(window.location.search).get("t") ?? "")
+    : ""
   const [isMicOn, setIsMicOn]             = useState(true)
   const [isCamOn, setIsCamOn]             = useState(true)
   const [sourceLang, setSourceLang]       = useState("fr")
@@ -54,6 +60,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const [isFallbackActive, setIsFallbackActive] = useState(false)
   const [isJoining,       setIsJoining]         = useState(true)
   const [joinError,       setJoinError]         = useState<string | null>(null)
+  const [sessionEnded,    setSessionEnded]      = useState(false)
   const [transStep,       setTransStep]         = useState<string | null>(null)
   const screenTrackRef   = useRef<ILocalVideoTrack | null>(null)
   const cloneVoiceIdRef  = useRef<string | null>(null)
@@ -282,7 +289,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           return null
         })
 
-        const tokenPromise = fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
+        const tokenEndpoint = isGuest
+          ? `/api/meetings/guest-token?roomId=${encodeURIComponent(roomId)}&t=${encodeURIComponent(guestToken)}`
+          : `/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`
+        const tokenPromise = fetch(tokenEndpoint)
           .then(async r => ({ ok: r.ok, data: await r.json() }))
 
         // Show camera as soon as the device is ready — does NOT wait for the token.
@@ -404,7 +414,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         client.on("token-privilege-will-expire", () => {
           void (async () => {
             try {
-              const r2 = await fetch(`/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`)
+              const renewEndpoint = isGuest
+                ? `/api/meetings/guest-token?roomId=${encodeURIComponent(roomId)}&t=${encodeURIComponent(guestToken)}`
+                : `/api/agora-token?channel=${encodeURIComponent(roomId)}&sid=${sessionIdRef.current}`
+              const r2 = await fetch(renewEndpoint)
               const d2 = await r2.json()
               if (d2.token) { agoraTokenRef.current = d2.token; await client.renewToken(d2.token) }
             } catch (e) { console.warn("[TOKEN RENEWAL]", e) }
@@ -490,6 +503,51 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [rejoin])
+
+  // Host heartbeat — keep meeting LIVE while host is in room (every 30s)
+  useEffect(() => {
+    if (isGuest) return
+    const hostEmail = typeof localStorage !== "undefined"
+      ? (localStorage.getItem("instanttalk_host_email") ?? "")
+      : ""
+    const send = () => {
+      fetch(`/api/meetings/heartbeat?roomId=${encodeURIComponent(roomId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostEmail }),
+      }).catch(() => {})
+    }
+    send() // immediate on mount
+    const id = setInterval(send, 30_000)
+    return () => {
+      clearInterval(id)
+      // Mark meeting ENDED on leave
+      navigator.sendBeacon(
+        `/api/meetings/heartbeat?roomId=${encodeURIComponent(roomId)}`,
+        new Blob([], { type: "application/json" })
+      )
+      fetch(`/api/meetings/heartbeat?roomId=${encodeURIComponent(roomId)}`, {
+        method: "DELETE", keepalive: true,
+      }).catch(() => {})
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId])
+
+  // Guest status poll — detect when host goes offline (every 10s)
+  useEffect(() => {
+    if (!isGuest) return
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/meetings/heartbeat?roomId=${encodeURIComponent(roomId)}`)
+        const d = await r.json()
+        if (!d.hostPresent || d.status === "ENDED" || d.status === "CANCELLED") {
+          setSessionEnded(true)
+        }
+      } catch {}
+    }, 10_000)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId])
 
   // ─── Interpreter track (TTS → Agora) ────────────────────────────────────────
 
@@ -758,6 +816,29 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
 
   // ─── Render ──────────────────────────────────────────────────────────────────
+
+  if (sessionEnded) return (
+    <div className="h-screen w-screen bg-black text-white flex flex-col items-center justify-center gap-6 p-8">
+      <div style={{ fontSize: 48 }}>📴</div>
+      <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", textAlign: "center" }}>
+        Session terminée
+      </div>
+      <div style={{ opacity: .65, textAlign: "center", maxWidth: 360, lineHeight: 1.6 }}>
+        La session est terminée. Créez votre propre réunion pour continuer.
+      </div>
+      <a
+        href="/"
+        style={{
+          height: 50, padding: "0 32px", borderRadius: 999, lineHeight: "50px",
+          background: "linear-gradient(135deg,#6366f1,#7c3aed)", color: "#fff",
+          fontWeight: 800, fontSize: 16, textDecoration: "none",
+          boxShadow: "0 12px 40px rgba(99,102,241,.4)",
+        }}
+      >
+        Créer une réunion
+      </a>
+    </div>
+  )
 
   return (
     <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden">

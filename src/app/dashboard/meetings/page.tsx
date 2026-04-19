@@ -17,6 +17,7 @@ type Meeting = {
   status: string;
   invitees: Invitee[];
   joinLink: string;
+  guestLink: string;
 };
 
 function pad(n: number) {
@@ -139,7 +140,7 @@ useEffect(() => {
         return;
       }
 
-      setLink(d.joinLink ?? "");
+      setLink(d.guestLink ?? d.joinLink ?? "");
       notify("Réunion créée avec succès !", "ok");
       setTitle("");
       setDesc("");
@@ -193,7 +194,7 @@ useEffect(() => {
         return;
       }
 
-      setLink(d.joinLink ?? "");
+      setLink(d.guestLink ?? d.joinLink ?? "");
       notify("Réunion instantanée créée !", "ok");
       load();
     } catch {
@@ -308,7 +309,7 @@ useEffect(() => {
             </button>
             {link && (
               <div style={{ borderRadius: 16, padding: 16, background: "rgba(99,102,241,.1)", border: "1px solid rgba(139,163,255,.2)" }}>
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Lien créé</div>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Lien invité (à partager)</div>
                 <div style={{ wordBreak: "break-all", opacity: .85, fontSize: 14 }}>{link}</div>
                 <button onClick={() => copy(link)} style={{ marginTop: 10, height: 36, padding: "0 16px", borderRadius: 999, border: 0, background: "rgba(99,102,241,.3)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
                   Copier
@@ -356,7 +357,17 @@ useEffect(() => {
                 <div key={m.id} style={{ borderRadius: 20, padding: 18, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "grid", gap: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <div>
-                      <div style={{ fontSize: 18, fontWeight: 800 }}>{m.title}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ fontSize: 18, fontWeight: 800 }}>{m.title}</div>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+                          background: m.status === "LIVE" ? "rgba(74,222,128,.15)" : "rgba(255,255,255,.08)",
+                          color: m.status === "LIVE" ? "#4ade80" : "rgba(255,255,255,.5)",
+                          border: `1px solid ${m.status === "LIVE" ? "rgba(74,222,128,.3)" : "rgba(255,255,255,.1)"}`,
+                        }}>
+                          {m.status === "LIVE" ? "● LIVE" : m.status}
+                        </span>
+                      </div>
                       <div style={{ opacity: .7, marginTop: 4, fontSize: 14 }}>{pretty(m.startsAt)} → {pretty(m.endsAt)}</div>
                     </div>
                     <div style={{ height: 40, minWidth: 40, borderRadius: 999, background: "rgba(99,102,241,.2)", border: "1px solid rgba(139,163,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>
@@ -365,9 +376,9 @@ useEffect(() => {
                   </div>
                   <div style={{ opacity: .7, fontSize: 14 }}>{m.invitees.map((i) => i.email).join(", ") || "Aucun invité"}</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => copy(m.joinLink)} style={S.btn("rgba(255,255,255,.08)")}>Copier lien</button>
-                    <button onClick={() => invite(m.id)} style={S.btn("rgba(99,102,241,.2)")}>Inviter</button>
-                    <button onClick={() => window.open(m.joinLink, "_blank")} style={S.btn("linear-gradient(135deg,#6d74ff,#7c3aed)")}>Démarrer</button>
+                    <button onClick={() => copy(m.guestLink || m.joinLink)} style={S.btn("rgba(255,255,255,.08)")}>Copier lien invité</button>
+                    <button onClick={() => invite(m.id)} style={S.btn("rgba(99,102,241,.2)")}>Inviter par email</button>
+                    <button onClick={() => window.open(m.joinLink, "_blank")} style={S.btn("linear-gradient(135deg,#6d74ff,#7c3aed)")}>Démarrer (host)</button>
                     <button onClick={() => remove(m.id)} style={S.btn("rgba(220,38,38,.2)")}>Supprimer</button>
                   </div>
                 </div>
