@@ -543,9 +543,9 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
         </div>
 
         <div className="relative mx-auto max-w-2xl">
-          <Pill color="slate">
-            <span className="text-slate-300">Prêt à commencer ?</span>
-          </Pill>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white/80 backdrop-blur-sm">
+            Prêt à commencer ?
+          </span>
           <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-white md:text-5xl">
             La barrière linguistique<br />n'est plus une fatalité.
           </h2>

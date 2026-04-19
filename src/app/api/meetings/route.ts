@@ -7,8 +7,55 @@ function newId() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 25);
 }
 
+/* ── Self-healing schema ── */
+const g = globalThis as unknown as { _meetingSchemaReady?: boolean };
+async function ensureSchema() {
+  if (g._meetingSchemaReady) return;
+  const stmts = [
+    `DO $$ BEGIN CREATE TYPE "MeetingStatus" AS ENUM ('SCHEDULED','LIVE','ENDED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN CREATE TYPE "InviteStatus" AS ENUM ('PENDING','SENT','ACCEPTED','DECLINED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN CREATE TYPE "ReminderChannel" AS ENUM ('EMAIL'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `CREATE TABLE IF NOT EXISTS "Meeting" (
+      "id" TEXT NOT NULL, "title" TEXT NOT NULL, "description" TEXT,
+      "hostEmail" TEXT NOT NULL, "roomId" TEXT NOT NULL, "inviteToken" TEXT NOT NULL,
+      "startsAt" TIMESTAMP(3) NOT NULL, "endsAt" TIMESTAMP(3) NOT NULL,
+      "timezone" TEXT NOT NULL DEFAULT 'Europe/Paris',
+      "status" "MeetingStatus" NOT NULL DEFAULT 'SCHEDULED',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "Meeting_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Meeting_roomId_key" ON "Meeting"("roomId")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Meeting_inviteToken_key" ON "Meeting"("inviteToken")`,
+    `CREATE INDEX IF NOT EXISTS "Meeting_startsAt_idx" ON "Meeting"("startsAt")`,
+    `CREATE TABLE IF NOT EXISTS "MeetingInvite" (
+      "id" TEXT NOT NULL, "meetingId" TEXT NOT NULL, "email" TEXT NOT NULL,
+      "name" TEXT, "status" "InviteStatus" NOT NULL DEFAULT 'PENDING',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "MeetingInvite_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "MeetingInvite_meetingId_email_key" ON "MeetingInvite"("meetingId","email")`,
+    `DO $$ BEGIN ALTER TABLE "MeetingInvite" ADD CONSTRAINT "MeetingInvite_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `CREATE TABLE IF NOT EXISTS "MeetingReminder" (
+      "id" TEXT NOT NULL, "meetingId" TEXT NOT NULL,
+      "remindAt" TIMESTAMP(3) NOT NULL, "sentAt" TIMESTAMP(3),
+      "channel" "ReminderChannel" NOT NULL DEFAULT 'EMAIL',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "MeetingReminder_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "MeetingReminder_remindAt_idx" ON "MeetingReminder"("remindAt")`,
+    `DO $$ BEGIN ALTER TABLE "MeetingReminder" ADD CONSTRAINT "MeetingReminder_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  ];
+  for (const sql of stmts) {
+    try { await pool.query(sql); } catch { /* ignore individual failures */ }
+  }
+  g._meetingSchemaReady = true;
+}
+
 export async function GET(req: NextRequest) {
   try {
+    await ensureSchema();
     const { rows: meetings } = await pool.query<{
       id: string; title: string; description: string | null;
       hostEmail: string; roomId: string; inviteToken: string;
@@ -58,6 +105,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    await ensureSchema();
     const body = await req.json();
 
     const title = String(body.title || "").trim();
