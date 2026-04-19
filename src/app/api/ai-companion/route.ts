@@ -3,7 +3,11 @@ import OpenAI from "openai"
 
 export const runtime = "nodejs"
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+let openai: OpenAI | null = null
+function getOpenAI() {
+  if (!openai) openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return openai
+}
 
 // Map language codes to full names for the prompt
 const LANG_NAMES: Record<string, string> = {
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   try {
     if (type === "summary") {
-      const res = await openai.chat.completions.create({
+      const res = await getOpenAI().chat.completions.create({
         model: "gpt-4o",
         messages: [
           { role: "system", content: buildSummaryPrompt(outputLang) },
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === "actions") {
-      const res = await openai.chat.completions.create({
+      const res = await getOpenAI().chat.completions.create({
         model: "gpt-4o",
         messages: [
           { role: "system", content: buildActionsPrompt(outputLang) },
