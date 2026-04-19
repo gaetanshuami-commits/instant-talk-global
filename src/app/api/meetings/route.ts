@@ -83,14 +83,14 @@ export async function POST(req: NextRequest) {
       `INSERT INTO "Meeting"
          (id, title, description, "hostEmail", "roomId", "inviteToken",
           "startsAt", "endsAt", timezone, status, "createdAt", "updatedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::"MeetingStatus",NOW(),NOW())`,
       [id, title, description, hostEmail, roomId, inviteToken, startsAt, endsAt, timezone, status]
     );
 
     for (const email of invitees.filter((e) => typeof e === "string" && e.trim())) {
       await pool.query(
         `INSERT INTO "MeetingInvite" (id, "meetingId", email, status, "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,'PENDING',NOW(),NOW())`,
+         VALUES ($1,$2,$3,'PENDING'::"InviteStatus",NOW(),NOW())`,
         [newId(), id, email.trim().toLowerCase()]
       );
     }
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     for (const offset of [86400000, 3600000, 900000]) {
       await pool.query(
         `INSERT INTO "MeetingReminder" (id, "meetingId", "remindAt", channel, "createdAt")
-         VALUES ($1,$2,$3,'EMAIL',NOW())`,
+         VALUES ($1,$2,$3,'EMAIL'::"ReminderChannel",NOW())`,
         [newId(), id, new Date(startsAt.getTime() - offset)]
       );
     }
