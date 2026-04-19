@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
   } else {
     // ── DB check via pg direct (no Prisma WASM) ──────────────────────────────
     let subscription: { plan: string; status: string; currentPeriodEnd: Date | null; enterpriseEnabled: boolean } | null = null
+    let dbAvailable = true
     try {
       const { rows } = await pool.query<{
         plan: string; status: string; "currentPeriodEnd": Date | null; "enterpriseEnabled": boolean
@@ -65,19 +66,21 @@ export async function GET(req: NextRequest) {
       subscription = rows[0] ?? null
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error("[agora-token] DB error:", msg)
-      return NextResponse.json({ error: "Subscription check failed", detail: msg }, { status: 500 })
+      console.warn("[agora-token] DB unavailable, falling back to cookie plan:", msg.slice(0, 120))
+      dbAvailable = false
     }
 
-    if (!subscription) {
+    if (dbAvailable && !subscription) {
       return NextResponse.json({ error: "No active subscription found." }, { status: 403 })
     }
 
-    if (subscription.currentPeriodEnd && subscription.currentPeriodEnd < new Date()) {
+    if (dbAvailable && subscription?.currentPeriodEnd && subscription.currentPeriodEnd < new Date()) {
       return NextResponse.json({ error: "Subscription expired." }, { status: 403 })
     }
 
-    plan = subscription.enterpriseEnabled ? "enterprise" : (subscription.plan || cookiePlan || "premium")
+    plan = (dbAvailable && subscription)
+      ? (subscription.enterpriseEnabled ? "enterprise" : (subscription.plan || cookiePlan || "premium"))
+      : (cookiePlan || "premium")
     effectiveCustomerRef = customerRef!
   }
 

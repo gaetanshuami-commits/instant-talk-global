@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/prisma";
 import { buildMeetingLink, createInviteToken, createMeetingRoomId, meetingStatusFromDates } from "@/lib/meetings";
@@ -99,7 +101,8 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
     console.error("[meetings GET]", msg);
-    return NextResponse.json({ meetings: [], error: msg.slice(0, 200) }, { status: 503 });
+    // Return 200 with empty list so the UI renders gracefully when DB is temporarily unavailable
+    return NextResponse.json({ meetings: [], error: msg.slice(0, 200) });
   }
 }
 
