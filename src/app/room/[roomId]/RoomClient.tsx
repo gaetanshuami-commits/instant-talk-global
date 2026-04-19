@@ -144,9 +144,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }
 
     if (clientRef.current) {
-      try { clientRef.current.removeAllListeners() } catch {}
-      try { await clientRef.current.leave()        } catch {}
+      const c = clientRef.current
       clientRef.current = null
+      try { c.removeAllListeners() } catch {}
+      const state = c.connectionState
+      if (state === "CONNECTED" || state === "CONNECTING" || state === "RECONNECTING") {
+        try { await c.leave() } catch {}
+      }
     }
 
     // Free the RoomSlot immediately — channel in URL so no body parsing needed
@@ -345,10 +349,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         if (data.caps) planCapsRef.current = data.caps
 
         // ── Agora client + events ─────────────────────────────────────────
+        if (cancelled) return
+
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "h264" })
         clientRef.current = client
-
-        if (cancelled) return
 
         client.on("user-published", async (user, mediaType) => {
           if (client.connectionState !== "CONNECTED") return
@@ -408,6 +412,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         })
 
         // ── Join + publish ────────────────────────────────────────────────
+        if (cancelled) { clientRef.current = null; return }
         await client.join(process.env.NEXT_PUBLIC_AGORA_APP_ID!, roomId, data.token, data.uid)
 
         if (tracksResult) {
