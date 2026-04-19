@@ -6,7 +6,11 @@ import { getCapabilities } from "@/lib/planCapabilities";
 
 export const runtime = "nodejs"
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let _client: OpenAI | null = null;
+function getClient() {
+  if (!_client) _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _client;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest) {
         ? `You are the business AI assistant inside Instant Talk. Respond in ${activeLanguage}. Provide structured, detailed responses with key action items, summaries, and team-relevant insights.`
         : `You are the premium AI assistant inside Instant Talk. Respond only in ${activeLanguage}. Be concise, useful, and natural.`;
 
-    const completion = await client.chat.completions.create({
+    const completion = await getClient().chat.completions.create({
       model: summaryLevel === "basic" ? "gpt-4o-mini" : "gpt-4o",
       temperature: 0.5,
       messages: [
