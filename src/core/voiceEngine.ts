@@ -76,16 +76,34 @@ let playbackEndTime = 0
 let _micMixSource: MediaStreamAudioSourceNode | null = null
 
 export function getTTSMediaStream(): MediaStream {
-  if (!ttsCtx) {
+  if (!ttsCtx || ttsCtx.state === "closed") {
     ttsCtx = new AudioContext({ sampleRate: 48000 })
     ttsDestNode = ttsCtx.createMediaStreamDestination()
+    // Auto-resume when browser suspends context (tab switch, device change)
+    ttsCtx.addEventListener("statechange", () => {
+      if (ttsCtx?.state === "suspended") {
+        ttsCtx.resume().catch(() => {})
+      }
+    })
   }
   return ttsDestNode!.stream
 }
 
+/** Recreate the AudioContext if it has entered a terminal or suspended state.
+ *  Called defensively before any PCM playback attempt. */
+function ensureAudioContext(): void {
+  if (!ttsCtx || ttsCtx.state === "closed") {
+    ttsCtx = null
+    ttsDestNode = null
+    getTTSMediaStream()
+  } else if (ttsCtx.state === "suspended") {
+    ttsCtx.resume().catch(() => {})
+  }
+}
+
 /** Injecte le micro dans le mixer TTS → remote entend voix originale + traduction. */
 export function addMicToTTSMix(micTrack: MediaStreamTrack): void {
-  if (!ttsCtx || !ttsDestNode) getTTSMediaStream()
+  ensureAudioContext()
   if (!ttsCtx || !ttsDestNode) return
   try {
     if (_micMixSource) { try { _micMixSource.disconnect() } catch {} }
@@ -187,7 +205,7 @@ async function streamPCMAudio(
   sampleRate: number,
   signal: AbortSignal
 ): Promise<void> {
-  if (!ttsCtx) getTTSMediaStream()
+  ensureAudioContext()
   const ctx  = ttsCtx!
   const dest = ttsDestNode!
   if (ctx.state === "suspended") await ctx.resume()
@@ -871,7 +889,7 @@ function cancelActiveSynth(): void {
 // ─── Web Audio: sequential TTS playback into Agora interpreter track ──────────
 
 async function scheduleAudio(audioData: ArrayBuffer): Promise<void> {
-  if (!ttsCtx) getTTSMediaStream()
+  ensureAudioContext()
   const ctx  = ttsCtx!
   const dest = ttsDestNode!
   if (ctx.state === "suspended") await ctx.resume()
