@@ -1,0 +1,132 @@
+name: Growth Outreach — Daily Lead Pipeline
+
+on:
+  schedule:
+    # Run every day at 08:00 UTC (10:00 Paris time)
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      segment:
+        description: "Target segment"
+        required: false
+        default: "b2b"
+        type: choice
+        options: [b2b, b2g, b2c]
+      limit:
+        description: "Max leads to extract"
+        required: false
+        default: "100"
+      dry_run:
+        description: "Dry run (no emails sent)"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  b2b-outreach:
+    name: B2B Lead Pipeline
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.segment == 'b2b'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-ai-agents.txt
+
+      - name: Run B2B growth pipeline
+        env:
+          APOLLO_API_KEY:    ${{ secrets.APOLLO_API_KEY }}
+          INSTANTLY_API_KEY: ${{ secrets.INSTANTLY_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: |
+          python agents/growth.py \
+            --segment b2b \
+            --limit ${{ github.event.inputs.limit || '100' }} \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-report-b2b-${{ github.run_id }}
+          path: agents/outreach/report_b2b_*.json
+          retention-days: 30
+
+  b2g-outreach:
+    name: B2G Lead Pipeline
+    runs-on: ubuntu-latest
+    # B2G runs on Mondays and Thursdays only
+    if: >
+      github.event_name == 'workflow_dispatch' && github.event.inputs.segment == 'b2g'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-ai-agents.txt
+
+      - name: Run B2G growth pipeline
+        env:
+          APOLLO_API_KEY:    ${{ secrets.APOLLO_API_KEY }}
+          INSTANTLY_API_KEY: ${{ secrets.INSTANTLY_API_KEY }}
+        run: |
+          python agents/growth.py \
+            --segment b2g \
+            --limit ${{ github.event.inputs.limit || '50' }} \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-report-b2g-${{ github.run_id }}
+          path: agents/outreach/report_b2g_*.json
+          retention-days: 30
+
+  support-monitor:
+    name: Translation Quality Monitor
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-ai-agents.txt
+
+      - name: Run translation quality check
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # Run support agent on any available translation logs
+          if [ -f agents/support/translation.log ]; then
+            python -m agents.support.support_agent \
+              --log-file agents/support/translation.log \
+              --threshold 0.8
+          else
+            echo "No translation log found — skipping quality check"
+          fi
+        continue-on-error: true
+
+      - name: Upload patches
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: translation-patches-${{ github.run_id }}
+          path: agents/support/patches.json
+          if-no-files-found: ignore
+          retention-days: 14

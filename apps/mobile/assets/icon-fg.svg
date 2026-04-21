@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Foreground only — no background fill, for Android adaptive icon -->
+  <!-- Android safe zone: center 66% circle. Logo kept within center ~700px -->
+  <defs>
+    <linearGradient id="bubble-fg" x1="202" y1="230" x2="822" y2="730"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a594ff"/>
+      <stop offset="55%" stop-color="#635bff"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="shadow-fg" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18" result="blur"/>
+      <feOffset dx="0" dy="10" result="shifted"/>
+      <feFlood flood-color="#2d1fa8" flood-opacity="0.60" result="color"/>
+      <feComposite in="color" in2="shifted" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Speech bubble centered, slightly smaller to fit safe zone -->
+  <path d="M 292,230 L 732,230 Q 822,230 822,320 L 822,660 Q 822,750 732,750 L 420,750 L 210,872 L 302,750 L 292,750 Q 202,750 202,660 L 202,320 Q 202,230 292,230 Z"
+        fill="url(#bubble-fg)" filter="url(#shadow-fg)"/>
+
+  <!-- Glass highlight -->
+  <path d="M 292,230 L 732,230 Q 822,230 822,320 L 822,400 Q 680,306 512,300 Q 344,294 202,394 L 202,320 Q 202,230 292,230 Z"
+        fill="rgba(255,255,255,0.09)"/>
+
+  <!-- Globe -->
+  <circle cx="512" cy="378" r="86" fill="none" stroke="rgba(255,255,255,0.30)" stroke-width="3"/>
+  <ellipse cx="512" cy="378" rx="86" ry="40" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="2.5"/>
+  <line x1="512" y1="292" x2="512" y2="464" stroke="rgba(255,255,255,0.22)" stroke-width="2.5"/>
+  <path d="M 440,340 Q 512,328 584,340" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
+  <path d="M 440,416 Q 512,428 584,416" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
+
+  <!-- Divider -->
+  <line x1="272" y1="498" x2="752" y2="498" stroke="rgba(255,255,255,0.09)" stroke-width="1.5"/>
+
+  <!-- Voice bars -->
+  <rect x="288" y="520" width="448" height="34" rx="17" fill="rgba(255,255,255,0.93)"/>
+  <rect x="328" y="580" width="368" height="34" rx="17" fill="rgba(255,255,255,0.72)"/>
+  <rect x="374" y="640" width="276" height="34" rx="17" fill="rgba(255,255,255,0.48)"/>
+</svg>

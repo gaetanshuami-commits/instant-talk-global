@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1284" height="2778" viewBox="0 0 1284 2778">
+  <defs>
+    <radialGradient id="splash-bg" cx="642" cy="1100" r="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f0a2e"/>
+      <stop offset="70%" stop-color="#04070f"/>
+      <stop offset="100%" stop-color="#020408"/>
+    </radialGradient>
+    <linearGradient id="logo-bubble" x1="379" y1="888" x2="905" y2="1328"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9178ff"/>
+      <stop offset="55%" stop-color="#635bff"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="logo-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="28" result="blur"/>
+      <feFlood flood-color="#635bff" flood-opacity="0.50" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="ambient-splash" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="80"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1284" height="2778" fill="url(#splash-bg)"/>
+
+  <!-- Ambient purple glow -->
+  <ellipse cx="642" cy="1108" rx="380" ry="320" fill="#635bff" opacity="0.11"
+           filter="url(#ambient-splash)"/>
+
+  <!-- ── Logo (centered at ~y=1108) ── -->
+  <!-- Speech bubble: 526×440 centered at x=642, y=1088 -->
+  <!-- x1=379, y1=888  x2=905, y2=1328  r=72  -->
+  <path d="M 451,888 L 833,888 Q 905,888 905,960 L 905,1256 Q 905,1328 833,1328 L 696,1328 L 530,1438 L 558,1328 L 451,1328 Q 379,1328 379,1256 L 379,960 Q 379,888 451,888 Z"
+        fill="url(#logo-bubble)" filter="url(#logo-glow)"/>
+
+  <!-- Glass highlight -->
+  <path d="M 451,888 L 833,888 Q 905,888 905,960 L 905,1028 Q 790,952 642,948 Q 494,944 379,1022 L 379,960 Q 379,888 451,888 Z"
+        fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Globe (center y=1008) -->
+  <circle cx="642" cy="1008" r="68" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="2.5"/>
+  <ellipse cx="642" cy="1008" rx="68" ry="32" fill="none" stroke="rgba(255,255,255,0.20)" stroke-width="2"/>
+  <line x1="642" y1="940" x2="642" y2="1076" stroke="rgba(255,255,255,0.20)" stroke-width="2"/>
+  <path d="M 586,978 Q 642,968 698,978" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1.8"/>
+  <path d="M 586,1038 Q 642,1048 698,1038" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1.8"/>
+
+  <!-- Divider -->
+  <line x1="412" y1="1106" x2="872" y2="1106" stroke="rgba(255,255,255,0.07)" stroke-width="1.5"/>
+
+  <!-- Voice bars -->
+  <rect x="416" y="1122" width="460" height="28" rx="14" fill="rgba(255,255,255,0.92)"/>
+  <rect x="450" y="1166" width="384" height="28" rx="14" fill="rgba(255,255,255,0.70)"/>
+  <rect x="488" y="1210" width="308" height="28" rx="14" fill="rgba(255,255,255,0.45)"/>
+
+  <!-- ── App name ── -->
+  <text x="642" y="1410"
+        font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="72" font-weight="800" letter-spacing="-1.5"
+        fill="#ffffff" text-anchor="middle">Instant Talk</text>
+
+  <!-- ── Tagline ── -->
+  <text x="642" y="1480"
+        font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="34" font-weight="400" letter-spacing="0.5"
+        fill="rgba(255,255,255,0.40)" text-anchor="middle">Real-time translation · 26 languages</text>
+
+  <!-- Bottom accent dots (language indicator) -->
+  <circle cx="552" cy="1558" r="6" fill="#635bff" opacity="0.80"/>
+  <circle cx="582" cy="1558" r="6" fill="#818cf8" opacity="0.60"/>
+  <circle cx="612" cy="1558" r="6" fill="#a5b4fc" opacity="0.45"/>
+  <circle cx="642" cy="1558" r="6" fill="#c7d2fe" opacity="0.35"/>
+  <circle cx="672" cy="1558" r="6" fill="#a5b4fc" opacity="0.45"/>
+  <circle cx="702" cy="1558" r="6" fill="#818cf8" opacity="0.60"/>
+  <circle cx="732" cy="1558" r="6" fill="#635bff" opacity="0.80"/>
+</svg>

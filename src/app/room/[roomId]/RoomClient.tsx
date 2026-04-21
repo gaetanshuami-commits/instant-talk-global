@@ -68,6 +68,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   const clientRef      = useRef<IAgoraRTCClient | null>(null)
   const tracksRef      = useRef<{ audio: ILocalAudioTrack; video: ILocalVideoTrack } | null>(null)
+  const localVideoRef  = useRef<HTMLVideoElement | null>(null)
   const interpreterRef = useRef<ILocalAudioTrack | null>(null)
   const isInitializing = useRef(false)
   const subtitleRef    = useRef<SubtitleOverlayHandle | null>(null)
@@ -176,10 +177,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   // and may or may not re-fire user-published for remote users depending on version.
 
   const restoreAfterReconnect = useCallback(async (client: IAgoraRTCClient) => {
-    // 1. Re-play local video — the Agora video element inside local-video-renderer
-    //    loses its srcObject binding during reconnect; re-calling play() restores it.
-    if (tracksRef.current?.video) {
-      try { tracksRef.current.video.play("local-video-renderer") } catch {}
+    // 1. Re-attach local video stream (srcObject binding lost during reconnect)
+    if (tracksRef.current?.video && localVideoRef.current) {
+      try {
+        localVideoRef.current.srcObject = new MediaStream([tracksRef.current.video.getMediaStreamTrack()])
+        localVideoRef.current.play().catch(() => {})
+      } catch {}
     }
 
     // 2. Re-subscribe to every remote user currently reported by the SDK.
@@ -486,19 +489,27 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }
   }, [roomId, cleanup, rejoin, restoreAfterReconnect])
 
-  // Re-inject local video track after Fast Refresh
+  // Attach local video track directly via native MediaStream — bypasses Agora's play()
   useEffect(() => {
-    if (!localVideoTrack) return
-    localVideoTrack.play("local-video-renderer")
+    if (!localVideoTrack || !localVideoRef.current) return
+    const videoEl = localVideoRef.current
+    try {
+      videoEl.srcObject = new MediaStream([localVideoTrack.getMediaStreamTrack()])
+      videoEl.play().catch(() => {})
+    } catch {}
+    return () => { try { videoEl.srcObject = null } catch {} }
   }, [localVideoTrack])
 
   // Background-tab reconnect: browsers throttle WS keepalives in hidden tabs
   useEffect(() => {
     const onVisible = () => {
-      if (document.hidden || !clientRef.current) return
-      if (clientRef.current.connectionState === "DISCONNECTED") {
-        void rejoin(clientRef.current)
-      }
+      // Defer all async work — synchronous visibilitychange handlers must return fast
+      setTimeout(() => {
+        if (document.hidden || !clientRef.current) return
+        if (clientRef.current.connectionState === "DISCONNECTED") {
+          void rejoin(clientRef.current)
+        }
+      }, 0)
     }
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
@@ -862,7 +873,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         >
           {/* Local tile */}
           <div className="video-tile-local relative bg-[#111] rounded-2xl overflow-hidden border border-white/8 min-h-0">
-            <div id="local-video-renderer" className="absolute inset-0" />
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover"
+            />
 
             {/* Join progress overlay — shows transStep or joinError while connecting */}
             {(isJoining || joinError) && (

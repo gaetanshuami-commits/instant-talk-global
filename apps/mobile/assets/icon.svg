@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="512" cy="450" r="636" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#130d3a"/>
+      <stop offset="100%" stop-color="#04070f"/>
+    </radialGradient>
+    <linearGradient id="bubble" x1="182" y1="210" x2="842" y2="750" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9178ff"/>
+      <stop offset="55%" stop-color="#635bff"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="bubble-shadow" x="-18%" y="-18%" width="136%" height="136%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="22" result="blur"/>
+      <feOffset in="blur" dx="0" dy="14" result="shifted"/>
+      <feFlood flood-color="#635bff" flood-opacity="0.55" result="color"/>
+      <feComposite in="color" in2="shifted" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="ambient" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="55"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Ambient glow -->
+  <ellipse cx="512" cy="480" rx="310" ry="260" fill="#635bff" opacity="0.13" filter="url(#ambient)"/>
+
+  <!-- Speech bubble: body + tail -->
+  <path d="M 272,210 L 752,210 Q 842,210 842,300 L 842,660 Q 842,750 752,750 L 420,750 L 200,882 L 292,750 L 272,750 Q 182,750 182,660 L 182,300 Q 182,210 272,210 Z"
+        fill="url(#bubble)" filter="url(#bubble-shadow)"/>
+
+  <!-- Glass highlight -->
+  <path d="M 272,210 L 752,210 Q 842,210 842,300 L 842,390 Q 690,290 512,282 Q 334,274 182,380 L 182,300 Q 182,210 272,210 Z"
+        fill="rgba(255,255,255,0.07)"/>
+
+  <!-- Globe circle -->
+  <circle cx="512" cy="368" r="92" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="3"/>
+  <!-- Equator -->
+  <ellipse cx="512" cy="368" rx="92" ry="42" fill="none" stroke="rgba(255,255,255,0.20)" stroke-width="2.5"/>
+  <!-- Meridian -->
+  <line x1="512" y1="276" x2="512" y2="460" stroke="rgba(255,255,255,0.20)" stroke-width="2.5"/>
+  <!-- Upper latitude -->
+  <path d="M 432,330 Q 512,318 592,330" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+  <!-- Lower latitude -->
+  <path d="M 432,406 Q 512,418 592,406" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+
+  <!-- Divider -->
+  <line x1="260" y1="490" x2="764" y2="490" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+
+  <!-- Voice bars -->
+  <rect x="276" y="512" width="472" height="34" rx="17" fill="rgba(255,255,255,0.92)"/>
+  <rect x="318" y="572" width="388" height="34" rx="17" fill="rgba(255,255,255,0.72)"/>
+  <rect x="365" y="632" width="294" height="34" rx="17" fill="rgba(255,255,255,0.48)"/>
+</svg>
