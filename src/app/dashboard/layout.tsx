@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useState, useRef, useEffect } from "react";
-import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useLanguage, LanguageSelector } from "@/lib/i18n/LanguageContext";
 import {
   LayoutDashboard, Video, Calendar, Users, MessageSquare,
   Radio, Film, BarChart3, Globe, Bell, Search,
@@ -433,26 +433,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Notifications */}
             <NotificationPanel />
 
-            {/* Language badge */}
-            <div
-              style={{
-                height: "34px",
-                padding: "0 12px",
-                borderRadius: "999px",
-                background: "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(99,102,241,0.06))",
-                border: "1px solid rgba(99,102,241,0.22)",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                fontWeight: 700,
-                fontSize: "12.5px",
-                color: "#a5b4fc",
-                cursor: "pointer",
-              }}
-            >
-              <Globe size={12} />
-              26 langues
-            </div>
+            {/* Language selector */}
+            <LanguageSelector compact dark />
 
             {/* Avatar */}
             <div

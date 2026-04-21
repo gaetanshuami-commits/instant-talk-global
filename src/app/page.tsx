@@ -124,6 +124,7 @@ const waveHeights = [4, 8, 14, 10, 6, 12, 16, 8, 5, 11, 15, 9, 7, 13, 6, 10, 14,
 
 /* ── Polyglot cinematic demo section ─────────────────────────────────────────── */
 function PolyglotDemoSection() {
+  const { t } = useLanguage();
   const [activeLang, setActiveLang] = useState(0);
   const [visible, setVisible] = useState(true);
 
@@ -164,17 +165,17 @@ function PolyglotDemoSection() {
         <div className="mx-auto mb-14 max-w-2xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.22em] text-violet-300">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
-            Démonstration Polyglotte — 26 Langues
+            {t("polyglot.badge")}
           </div>
           <h2 className="mt-5 text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-            Une personne.{" "}
+            {t("polyglot.title")}{" "}
             <span className="bg-gradient-to-r from-violet-400 to-sky-400 bg-clip-text text-transparent">
-              26 langues.
+              {t("polyglot.titleAccent")}
             </span>{" "}
-            Zéro barrière.
+            {t("polyglot.titleEnd")}
           </h2>
           <p className="mt-4 text-base leading-7 text-white/60">
-            Notre moteur hybride Azure / ElevenLabs traduit chaque parole en temps réel — voix naturelle, sous-titres synchronisés, latence inférieure à 400 ms. La preuve ultime pour vos partenaires B2G.
+            {t("polyglot.sub")}
           </p>
         </div>
 
@@ -208,7 +209,7 @@ function PolyglotDemoSection() {
                     style={{ opacity: visible ? 1 : 0.2 }}
                   >
                     <span className="mr-2 text-[10px] font-bold uppercase tracking-wider text-white/40">
-                      SOUS-TITRES
+                      {t("polyglot.subtitles")}
                     </span>
                     {lang.phrase}
                   </div>
@@ -291,7 +292,7 @@ function PolyglotDemoSection() {
 
             {/* Floating language counter */}
             <div className="absolute -left-4 top-1/3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 shadow-xl backdrop-blur-sm">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-white/30">Langue</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-white/30">{t("polyglot.langLabel")}</div>
               <div className="mt-0.5 text-lg font-extrabold text-white">
                 {activeLang + 1}
                 <span className="text-sm font-medium text-white/40"> / 26</span>
@@ -302,7 +303,7 @@ function PolyglotDemoSection() {
           {/* Right — clickable language grid */}
           <div>
             <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white/30">
-              Cliquez pour changer de langue
+              {t("polyglot.clickLang")}
             </div>
             <div className="grid grid-cols-2 gap-2">
               {polyglotLanguages.map((l, i) => (
@@ -332,10 +333,10 @@ function PolyglotDemoSection() {
         {/* Bottom proof line */}
         <div className="mt-14 flex flex-wrap items-center justify-center gap-8 border-t border-white/10 pt-10">
           {[
-            { label: "Fidélité sémantique certifiée" },
-            { label: "Latence < 400 ms garantie" },
-            { label: "26 langues, zéro configuration" },
-            { label: "Certifié usage diplomatique B2G" },
+            { label: t("proof.tag1") },
+            { label: t("proof.tag2") },
+            { label: t("proof.tag3") },
+            { label: t("proof.tag4") },
           ].map(({ label }) => (
             <div key={label} className="flex items-center gap-2 text-sm font-medium text-white/40">
               <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-emerald-400">
@@ -352,6 +353,7 @@ function PolyglotDemoSection() {
 
 /* ── Animated translation card ──────────────────────────────────────────────── */
 function LiveTranslationDemo() {
+  const { t } = useLanguage();
   const [active, setActive] = useState(0);
   const [visible, setVisible] = useState(true);
 
@@ -373,7 +375,7 @@ function LiveTranslationDemo() {
       <div className="mb-4 flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-600">
-          Traduction active
+          {t("polyglot.activeLabel")}
         </span>
         <span className="ml-auto rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold text-violet-600 uppercase tracking-wider">
           &lt; 400 ms
@@ -848,13 +850,13 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="mx-auto mb-10 max-w-2xl text-center">
             <div className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.22em] text-violet-600 shadow-sm">
-              La traduction en action
+              {t("video.badge")}
             </div>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-[#0a2540] md:text-4xl">
-              Chaque participant parle sa langue. Tout le monde se comprend.
+              {t("video.title")}
             </h2>
             <p className="mt-4 text-base leading-7 text-slate-500">
-              Regardez comment Instant Talk traduit une conversation internationale en temps réel, avec une voix naturelle et des sous-titres synchronisés.
+              {t("video.sub")}
             </p>
           </div>
           <HeroVideoPlayer />
@@ -867,10 +869,10 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-extrabold tracking-tight text-[#0a2540] md:text-4xl">
-              26 langues. Une seule plateforme.
+              {t("langs.title")}
             </h2>
             <p className="mt-4 text-base leading-7 text-slate-500">
-              Du swahili au japonais, de l'arabe au polonais : chaque réunion s'adapte automatiquement à chaque participant.
+              {t("langs.sub")}
             </p>
           </div>
 
@@ -879,7 +881,7 @@ export default function HomePage() {
               "Français", "English", "Español", "Deutsch", "Italiano", "Português",
               "Nederlands", "中文", "日本語", "العربية", "한국어", "हिन्दी",
               "Türkçe", "Русский", "Polski", "Svenska", "Ελληνικά", "Čeština",
-              "Română", "Magyar", "Kiswahili", "ภาษาไทย", "Tiếng Việt", "+ 3 autres",
+              "Română", "Magyar", "Kiswahili", "ภาษาไทย", "Tiếng Việt", t("langs.more"),
             ].map((name) => (
               <div
                 key={name}
@@ -900,7 +902,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="mx-auto max-w-2xl text-center">
             <div className="inline-flex rounded-full border border-slate-200 bg-[#f6f9fc] px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.22em] text-[#635bff] shadow-sm">
-              Tarifs
+              {t("nav.pricing")}
             </div>
             <h2 className="mt-5 text-4xl font-extrabold tracking-tight text-[#0a2540] md:text-5xl">
               {t("pricing.title")}
@@ -944,10 +946,10 @@ export default function HomePage() {
               period=""
               desc={t("pricing.enterpriseDesc")}
               features={[
-                "Déploiement personnalisé",
-                "Support dédié 24/7",
-                "SLA garanti",
-                "Intégration sur mesure",
+                t("pricing.enterpriseF2"),
+                t("pricing.enterpriseF6"),
+                t("pricing.enterpriseF5"),
+                t("pricing.enterpriseF4"),
               ]}
               cta={t("pricing.enterpriseCta")}
               href="/contact"
@@ -959,7 +961,91 @@ export default function HomePage() {
               href="/pricing"
               className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#635bff] hover:underline"
             >
-              Comparer tous les plans en détail →
+              {t("pricing.compareAll")}
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─────────────────────── PRODUCT GUIDE / ONBOARDING ────────────────── */}
+      <section className="border-y border-slate-200 bg-[#f6f9fc] py-24">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="mx-auto mb-14 max-w-2xl text-center">
+            <div className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.22em] text-violet-600 shadow-sm">
+              {t("guide.badge")}
+            </div>
+            <h2 className="mt-5 text-4xl font-extrabold tracking-tight text-[#0a2540] md:text-5xl">
+              {t("guide.title")}
+            </h2>
+            <p className="mt-4 text-base leading-7 text-slate-500">
+              {t("guide.sub")}
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              {
+                num: "01",
+                color: "bg-violet-100 text-violet-700",
+                title: t("guide.c1title"),
+                steps: [t("guide.c1s1"), t("guide.c1s2"), t("guide.c1s3")],
+              },
+              {
+                num: "02",
+                color: "bg-sky-100 text-sky-700",
+                title: t("guide.c2title"),
+                steps: [t("guide.c2s1"), t("guide.c2s2"), t("guide.c2s3")],
+              },
+              {
+                num: "03",
+                color: "bg-emerald-100 text-emerald-700",
+                title: t("guide.c3title"),
+                steps: [t("guide.c3s1"), t("guide.c3s2"), t("guide.c3s3")],
+              },
+              {
+                num: "04",
+                color: "bg-amber-100 text-amber-700",
+                title: t("guide.c4title"),
+                steps: [t("guide.c4s1"), t("guide.c4s2"), t("guide.c4s3")],
+              },
+              {
+                num: "05",
+                color: "bg-rose-100 text-rose-700",
+                title: t("guide.c5title"),
+                steps: [t("guide.c5s1"), t("guide.c5s2"), t("guide.c5s3")],
+              },
+              {
+                num: "06",
+                color: "bg-indigo-100 text-indigo-700",
+                title: t("guide.c6title"),
+                steps: [t("guide.c6s1"), t("guide.c6s2"), t("guide.c6s3")],
+              },
+            ].map((item) => (
+              <div key={item.num} className="rounded-[22px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className={`mb-4 inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-extrabold ${item.color}`}>
+                  {item.num}
+                </div>
+                <h3 className="mb-4 text-base font-bold text-[#0a2540]">{item.title}</h3>
+                <ol className="space-y-2.5">
+                  {item.steps.map((step, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm leading-6 text-slate-500">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-400">
+                        {i + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-10 text-center">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 rounded-full bg-[#635bff] px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition hover:bg-[#5247ff]"
+            >
+              {t("guide.cta")}
             </Link>
           </div>
         </div>

@@ -75,13 +75,16 @@ type ContextType = {
 const LanguageContext = createContext<ContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<LanguageCode>(() => {
-    if (typeof window === "undefined") return "fr";
-    const saved = localStorage.getItem("itg_lang") as LanguageCode | null;
-    return saved || "fr";
-  });
+  // Always start with "fr" to match SSR — localStorage is read after mount in useEffect
+  const [lang, setLangState] = useState<LanguageCode>("fr");
   // Bumped when extended translations finish loading — forces re-evaluation of `t`
   const [extRev, setExtRev] = useState(0);
+
+  // Restore saved language after mount (avoids SSR hydration mismatch #418)
+  useEffect(() => {
+    const saved = localStorage.getItem("itg_lang") as LanguageCode | null;
+    if (saved && saved !== "fr") setLangState(saved);
+  }, []);
 
   useEffect(() => {
     if (lang === "fr" || lang === "en") return;
@@ -132,7 +135,7 @@ export function useLanguage() {
   return ctx;
 }
 
-export function LanguageSelector({ compact = false }: { compact?: boolean }) {
+export function LanguageSelector({ compact = false, dark = false }: { compact?: boolean; dark?: boolean }) {
   const { lang, setLang } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -149,29 +152,44 @@ export function LanguageSelector({ compact = false }: { compact?: boolean }) {
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
+  const btnCls = dark
+    ? "flex items-center gap-2 rounded-full border border-white/15 bg-white/08 px-3 py-1.5 text-sm font-medium text-white/80 transition hover:bg-white/12 hover:border-white/25"
+    : "flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50";
+
+  const codeCls = dark
+    ? "inline-flex h-5 w-7 items-center justify-center rounded bg-white/15 text-[9px] font-bold tracking-wider text-white/70"
+    : "inline-flex h-5 w-7 items-center justify-center rounded bg-slate-100 text-[9px] font-bold tracking-wider text-slate-600";
+
+  const dropdownCls = dark
+    ? "absolute right-0 z-[200] mt-2 max-h-72 w-52 overflow-y-auto rounded-2xl border border-white/10 bg-[#07101e] p-1.5 shadow-2xl backdrop-blur-xl"
+    : "absolute right-0 z-[200] mt-2 max-h-72 w-52 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl";
+
+  const itemBaseCls = dark ? "text-white/70 hover:bg-white/08" : "text-slate-700 hover:bg-slate-100";
+  const itemCodeCls = dark ? "bg-white/10 text-white/50" : "bg-slate-100 text-slate-500";
+
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label="Select language"
-        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+        className={btnCls}
       >
-        <span className="inline-flex h-5 w-7 items-center justify-center rounded bg-slate-100 text-[9px] font-bold tracking-wider text-slate-600">
+        <span className={codeCls}>
           {(current?.code ?? lang).toUpperCase()}
         </span>
         {!compact && <span className="hidden sm:inline">{current?.label ?? lang.toUpperCase()}</span>}
         <svg
           viewBox="0 0 20 20"
           fill="currentColor"
-          className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 ${dark ? "text-white/40" : "text-slate-400"} transition-transform ${open ? "rotate-180" : ""}`}
         >
           <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute right-0 z-[200] mt-2 max-h-72 w-52 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl">
+        <div className={dropdownCls}>
           {languagesList.map((item) => (
             <button
               key={item.code}
@@ -180,12 +198,12 @@ export function LanguageSelector({ compact = false }: { compact?: boolean }) {
                 setOpen(false);
               }}
               className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition ${
-                lang === item.code ? "bg-[#635bff] text-white font-semibold" : "text-slate-700 hover:bg-slate-100"
+                lang === item.code ? "bg-[#635bff] text-white font-semibold" : itemBaseCls
               }`}
             >
               <span
                 className={`inline-flex h-4 w-7 items-center justify-center rounded text-[9px] font-bold tracking-wider ${
-                  lang === item.code ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                  lang === item.code ? "bg-white/20 text-white" : itemCodeCls
                 }`}
               >
                 {item.code.toUpperCase()}

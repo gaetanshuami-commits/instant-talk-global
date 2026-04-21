@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import {
   Video, Globe, Users, Mic, Calendar, Film, ArrowRight,
-  Clock, Zap, TrendingUp, Shield, Star, Copy, CheckCheck,
+  Clock, Zap, TrendingUp, Shield, Star,
 } from "lucide-react";
 
 type Meeting = {
@@ -14,7 +15,8 @@ type Meeting = {
   startsAt: string;
   endsAt: string;
   invitees: { id: string; email: string; status: string }[];
-  joinLink: string;
+  joinLink?: string;
+  roomId?: string;
   status: string;
 };
 
@@ -39,31 +41,31 @@ const PILL = {
   fontSize: "12px",
 };
 
-function formatTime(d: string) {
-  return new Date(d).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
-}
-
 export default function Dashboard() {
   const router = useRouter();
+  const { lang } = useLanguage();
   const [joinId, setJoinId] = useState("");
-  const [copied, setCopied] = useState(false);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
 
-  const DEMO_MEETINGS: Meeting[] = [
-    { id: "d1", title: "Partnership APAC",          startsAt: new Date(Date.now() + 2*3600000).toISOString(),  endsAt: new Date(Date.now() + 3*3600000).toISOString(),  invitees: [{id:"1",email:"kenji@global-jp.co",status:"confirmed"}],        joinLink: "/room/demo-apac",    status: "SCHEDULED" },
-    { id: "d2", title: "Board MENA Quarterly",      startsAt: new Date(Date.now() + 26*3600000).toISOString(), endsAt: new Date(Date.now() + 28*3600000).toISOString(), invitees: [{id:"2",email:"ahmed@mena.ae",status:"confirmed"},{id:"3",email:"lea@corp.fr",status:"pending"}], joinLink: "/room/demo-mena", status: "SCHEDULED" },
-    { id: "d3", title: "Product Review Europe",     startsAt: new Date(Date.now() + 50*3600000).toISOString(), endsAt: new Date(Date.now() + 52*3600000).toISOString(), invitees: [{id:"4",email:"laura@techberlin.de",status:"confirmed"}],       joinLink: "/room/demo-eu",      status: "SCHEDULED" },
-    { id: "d4", title: "Webinar Swahili Launch",    startsAt: new Date(Date.now() + 72*3600000).toISOString(), endsAt: new Date(Date.now() + 74*3600000).toISOString(), invitees: [{id:"5",email:"amara@nairobi.ke",status:"confirmed"},{id:"6",email:"dev@test.com",status:"confirmed"}],  joinLink: "/room/demo-sw", status: "SCHEDULED" },
-  ];
+  function formatTime(d: string) {
+    return new Date(d).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+  }
+  function formatDate(d: string) {
+    return new Date(d).toLocaleDateString(lang, { day: "numeric", month: "long" });
+  }
+
+  function getGreeting() {
+    const h = new Date().getHours();
+    if (h < 12) return lang === "fr" ? "Bonjour" : lang === "es" ? "Buenos días" : lang === "de" ? "Guten Morgen" : "Good morning";
+    if (h < 18) return lang === "fr" ? "Bonjour" : lang === "es" ? "Buenas tardes" : lang === "de" ? "Guten Tag" : "Good afternoon";
+    return lang === "fr" ? "Bonsoir" : lang === "es" ? "Buenas noches" : lang === "de" ? "Guten Abend" : "Good evening";
+  }
 
   useEffect(() => {
     fetch("/api/meetings")
       .then((r) => r.json())
-      .then((d) => setMeetings(d.meetings?.length ? d.meetings : DEMO_MEETINGS))
-      .catch(() => setMeetings(DEMO_MEETINGS));
+      .then((d) => setMeetings(Array.isArray(d.meetings) ? d.meetings : []))
+      .catch(() => setMeetings([]));
   }, []);
 
   const upcoming = meetings
@@ -80,12 +82,6 @@ export default function Dashboard() {
     e.preventDefault();
     if (!joinId.trim()) return;
     router.push(`/room/${joinId.trim().replace(/[^a-zA-Z0-9-]/g, "")}`);
-  };
-
-  const copyDemo = async () => {
-    await navigator.clipboard.writeText(`${window.location.origin}/room/demo-access`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const stats = [
@@ -165,52 +161,28 @@ export default function Dashboard() {
   return (
     <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
       {/* Header */}
-      <div style={{ marginBottom: "32px", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: "12px", letterSpacing: "0.16em", opacity: 0.5, marginBottom: "8px", fontWeight: 600 }}>
-            INSTANT TALK · WORKSPACE
-          </div>
-          <h1
-            style={{
-              fontSize: "clamp(32px, 4vw, 48px)",
-              fontWeight: 900,
-              letterSpacing: "-0.04em",
-              lineHeight: 1.05,
-              background: "linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.7) 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-              margin: 0,
-            }}
-          >
-            Bonne journée, Gaetan.
-          </h1>
-          <p style={{ marginTop: "10px", opacity: 0.6, fontSize: "15px" }}>
-            {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-          </p>
+      <div style={{ marginBottom: "32px" }}>
+        <div style={{ fontSize: "12px", letterSpacing: "0.16em", opacity: 0.5, marginBottom: "8px", fontWeight: 600 }}>
+          INSTANT TALK · WORKSPACE
         </div>
-
-        {/* Demo room copy */}
-        <button
-          onClick={copyDemo}
+        <h1
           style={{
-            height: "40px",
-            padding: "0 16px",
-            borderRadius: "999px",
-            border: "1px solid rgba(99,102,241,0.28)",
-            background: "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(99,102,241,0.06))",
-            color: "#a5b4fc",
-            fontWeight: 700,
-            fontSize: "13px",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
+            fontSize: "clamp(32px, 4vw, 48px)",
+            fontWeight: 900,
+            letterSpacing: "-0.04em",
+            lineHeight: 1.05,
+            background: "linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.7) 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            margin: 0,
           }}
         >
-          {copied ? <CheckCheck size={14} /> : <Copy size={14} />}
-          {copied ? "Lien copié !" : "Copier démo publique"}
-        </button>
+          {getGreeting()}.
+        </h1>
+        <p style={{ marginTop: "10px", opacity: 0.6, fontSize: "15px" }}>
+          {new Date().toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        </p>
       </div>
 
       {/* Stats row */}
@@ -488,7 +460,7 @@ export default function Dashboard() {
                       {formatTime(m.startsAt)} · {m.invitees.length} invité(s)
                     </div>
                   </div>
-                  <a href={m.joinLink} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                  <a href={m.roomId ? `/room/${m.roomId}` : (m.joinLink ?? "#")} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
                     <div
                       style={{
                         height: "32px",

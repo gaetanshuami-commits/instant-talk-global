@@ -296,6 +296,36 @@ const fr = {
     privacy: "Confidentialité",
     terms: "CGU",
     rights: "Tous droits réservés."
+  },
+  guide: {
+    badge:    "Guide produit",
+    title:    "Tout ce que vous pouvez faire avec Instant Talk",
+    sub:      "De la création de réunion au clonage vocal, chaque fonctionnalité est accessible en quelques clics.",
+    cta:      "Accéder au workspace →",
+    c1title:  "Lancer une réunion instantanée",
+    c1s1:     "Cliquez sur « Réunion instantanée » dans votre workspace",
+    c1s2:     "Un lien unique est généré — partagez-le à vos participants",
+    c1s3:     "La salle est active, la traduction démarre automatiquement",
+    c2title:  "Créer un webinar multilingue",
+    c2s1:     "Accédez à la section Webinars dans le menu",
+    c2s2:     "Définissez le titre, la date et les langues des participants",
+    c2s3:     "Envoyez les invitations — chacun reçoit son lien personnalisé",
+    c3title:  "Inviter des participants",
+    c3s1:     "Copiez le lien de réunion depuis votre dashboard",
+    c3s2:     "Envoyez-le par email ou message — aucune inscription requise",
+    c3s3:     "Les invités rejoignent avec leur langue préférée",
+    c4title:  "Activer la traduction live",
+    c4s1:     "Sélectionnez votre langue source en haut de la salle",
+    c4s2:     "Choisissez la langue de sortie pour chaque participant",
+    c4s3:     "La traduction audio démarre dès que vous parlez",
+    c5title:  "Activer le clonage vocal",
+    c5s1:     "Dans la salle, cliquez sur « Cloner ma voix »",
+    c5s2:     "Enregistrez 30 secondes de votre voix",
+    c5s3:     "La traduction utilisera désormais une voix proche de la vôtre",
+    c6title:  "Lire la transcription en temps réel",
+    c6s1:     "Les sous-titres s'affichent automatiquement dans la salle",
+    c6s2:     "Chaque participant voit la transcription dans sa langue",
+    c6s3:     "Un résumé IA est généré automatiquement après la réunion"
   }
 };
 
@@ -592,6 +622,36 @@ const en = {
     privacy: "Privacy",
     terms: "CGU",
     rights: "All rights reserved."
+  },
+  guide: {
+    badge:    "Product Guide",
+    title:    "Everything you can do with Instant Talk",
+    sub:      "From creating a meeting to voice cloning, every feature is accessible in a few clicks.",
+    cta:      "Access the workspace →",
+    c1title:  "Start an instant meeting",
+    c1s1:     "Click \"Instant Meeting\" in your workspace",
+    c1s2:     "A unique link is generated — share it with your participants",
+    c1s3:     "The room is live and translation starts automatically",
+    c2title:  "Create a multilingual webinar",
+    c2s1:     "Go to the Webinars section in the menu",
+    c2s2:     "Set the title, date and participant languages",
+    c2s3:     "Send invitations — each person receives a personalised link",
+    c3title:  "Invite participants",
+    c3s1:     "Copy the meeting link from your dashboard",
+    c3s2:     "Send it by email or message — no sign-up required",
+    c3s3:     "Guests join in their preferred language",
+    c4title:  "Enable live translation",
+    c4s1:     "Select your source language at the top of the room",
+    c4s2:     "Choose the output language for each participant",
+    c4s3:     "Audio translation starts as soon as you speak",
+    c5title:  "Enable voice cloning",
+    c5s1:     "In the room, click \"Clone my voice\"",
+    c5s2:     "Record 30 seconds of your voice",
+    c5s3:     "Translation will now use a voice close to yours",
+    c6title:  "Read the real-time transcript",
+    c6s1:     "Subtitles appear automatically in the room",
+    c6s2:     "Each participant sees the transcript in their language",
+    c6s3:     "An AI summary is automatically generated after the meeting"
   }
 };
 

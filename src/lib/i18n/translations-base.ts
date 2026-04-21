@@ -27,6 +27,18 @@ export const fr = {
     title: "Une plateforme pensée pour la communication mondiale",
     text: "Réunions, rendez-vous, invitations, traduction vocale instantanée, sous-titres synchronisés, notes IA et résumé automatique réunis dans une seule expérience premium."
   },
+  polyglot: {
+    badge: "Démonstration Polyglotte — 26 Langues",
+    title: "Une personne.",
+    titleAccent: "26 langues.",
+    titleEnd: "Zéro barrière.",
+    sub: "Notre moteur hybride Azure / ElevenLabs traduit chaque parole en temps réel — voix naturelle, sous-titres synchronisés, latence inférieure à 400 ms. La preuve ultime pour vos partenaires B2G.",
+    subtitles: "SOUS-TITRES",
+    clickLang: "Cliquez pour changer de langue",
+    translatedTo: "Traduit en",
+    langLabel: "Langue",
+    activeLabel: "Traduction active"
+  },
   problem: {
     badge: "Le problème mondial",
     title: "La barrière linguistique coûte des opportunités chaque jour.",
@@ -52,7 +64,11 @@ export const fr = {
     p2Title: "Sous-titres synchronisés",
     p2Text: "Chaque participant suit la réunion avec des sous-titres traduits et parfaitement lisibles.",
     p3Title: "Latence ultra faible",
-    p3Text: "La compréhension reste immédiate sans casser le rythme humain de la conversation."
+    p3Text: "La compréhension reste immédiate sans casser le rythme humain de la conversation.",
+    tag1: "Fidélité sémantique certifiée",
+    tag2: "Latence < 400 ms garantie",
+    tag3: "26 langues, zéro configuration",
+    tag4: "Certifié usage diplomatique B2G"
   },
   features: {
     title: "Tout ce qu'une plateforme mondiale doit faire. En mieux.",
@@ -85,6 +101,16 @@ export const fr = {
     u5Text: "Audiences, médiations et consultations multilingues avec une précision rigoureuse.",
     u6Title: "Éducation et recherche",
     u6Text: "Cours, thèses et collaborations académiques sans frontières linguistiques."
+  },
+  video: {
+    badge: "La traduction en action",
+    title: "Chaque participant parle sa langue. Tout le monde se comprend.",
+    sub: "Regardez comment Instant Talk traduit une conversation internationale en temps réel, avec une voix naturelle et des sous-titres synchronisés."
+  },
+  langs: {
+    title: "26 langues. Une seule plateforme.",
+    sub: "Du swahili au japonais, de l'arabe au polonais : chaque réunion s'adapte automatiquement à chaque participant.",
+    more: "+ 3 autres"
   },
   booking: {
     badge: "Réservation intelligente",
@@ -221,7 +247,25 @@ export const fr = {
     faq5q: "Puis-je changer de plan à tout moment ?",
     faq5a: "Oui. Vous pouvez passer d'un plan à l'autre à tout moment depuis votre espace. Les changements prennent effet immédiatement.",
     faq6q: "Existe-t-il une option pour les grandes institutions ?",
-    faq6a: "Oui. Le plan Enterprise est conçu pour les institutions, administrations et grandes entreprises qui ont besoin de déploiements sur mesure, d'une intégration API et d'un accompagnement dédié."
+    faq6a: "Oui. Le plan Enterprise est conçu pour les institutions, administrations et grandes entreprises qui ont besoin de déploiements sur mesure, d'une intégration API et d'un accompagnement dédié.",
+    supportStandard: "Support standard",
+    supportPrio: "Support prioritaire 24h",
+    supportDedicated: "Gestionnaire dédié 24/7",
+    groupCom: "Communication",
+    groupAI: "Intelligence Artificielle",
+    groupTeam: "Équipe & Administration",
+    groupSec: "Sécurité & Conformité",
+    cmpSemantics: "Analyse sémantique avancée",
+    cmpCompanion: "Companion IA en réunion",
+    cmpReports: "Rapports & statistiques",
+    cmpMembers: "Gestion des membres",
+    cmpE2E: "Chiffrement bout en bout",
+    cmpAudit: "Audit de sécurité dédié",
+    cmpGDPR: "Conformité RGPD avancée",
+    trustE2E: "Chiffrement E2E",
+    trustMeetings: "10 000+ réunions",
+    trustSupport: "Support humain inclus",
+    compareAll: "Comparer tous les plans en détail →"
   },
   stats: {
     meetings: "Réunions multilingues",
@@ -334,6 +378,36 @@ export const fr = {
     monthlyTrend:   "Tendance mensuelle",
     langBreakdown:  "Langues utilisées",
     security:       "Sécurité"
+  },
+  guide: {
+    badge:    "Guide produit",
+    title:    "Tout ce que vous pouvez faire avec Instant Talk",
+    sub:      "De la création de réunion au clonage vocal, chaque fonctionnalité est accessible en quelques clics.",
+    cta:      "Accéder au workspace →",
+    c1title:  "Lancer une réunion instantanée",
+    c1s1:     "Cliquez sur « Réunion instantanée » dans votre workspace",
+    c1s2:     "Un lien unique est généré — partagez-le à vos participants",
+    c1s3:     "La salle est active, la traduction démarre automatiquement",
+    c2title:  "Créer un webinar multilingue",
+    c2s1:     "Accédez à la section Webinars dans le menu",
+    c2s2:     "Définissez le titre, la date et les langues des participants",
+    c2s3:     "Envoyez les invitations — chacun reçoit son lien personnalisé",
+    c3title:  "Inviter des participants",
+    c3s1:     "Copiez le lien de réunion depuis votre dashboard",
+    c3s2:     "Envoyez-le par email ou message — aucune inscription requise",
+    c3s3:     "Les invités rejoignent avec leur langue préférée",
+    c4title:  "Activer la traduction live",
+    c4s1:     "Sélectionnez votre langue source en haut de la salle",
+    c4s2:     "Choisissez la langue de sortie pour chaque participant",
+    c4s3:     "La traduction audio démarre dès que vous parlez",
+    c5title:  "Activer le clonage vocal",
+    c5s1:     "Dans la salle, cliquez sur « Cloner ma voix »",
+    c5s2:     "Enregistrez 30 secondes de votre voix",
+    c5s3:     "La traduction utilisera désormais une voix proche de la vôtre",
+    c6title:  "Lire la transcription en temps réel",
+    c6s1:     "Les sous-titres s'affichent automatiquement dans la salle",
+    c6s2:     "Chaque participant voit la transcription dans sa langue",
+    c6s3:     "Un résumé IA est généré automatiquement après la réunion"
   }
 };
 
@@ -365,6 +439,18 @@ export const en = {
     title: "A platform built for global communication",
     text: "Meetings, appointments, invitations, instant voice translation, synchronized subtitles, AI notes and automatic summaries in one premium experience."
   },
+  polyglot: {
+    badge: "Polyglot Demo — 26 Languages",
+    title: "One person.",
+    titleAccent: "26 languages.",
+    titleEnd: "Zero barrier.",
+    sub: "Our hybrid Azure / ElevenLabs engine translates every word in real time — natural voice, synchronized subtitles, under 400 ms latency. The ultimate proof for your B2G partners.",
+    subtitles: "SUBTITLES",
+    clickLang: "Click to switch language",
+    translatedTo: "Translated to",
+    langLabel: "Language",
+    activeLabel: "Translation active"
+  },
   problem: {
     badge: "The global problem",
     title: "The language barrier costs opportunities every single day.",
@@ -390,7 +476,11 @@ export const en = {
     p2Title: "Synchronized subtitles",
     p2Text: "Every participant follows the meeting with translated and perfectly readable subtitles.",
     p3Title: "Ultra-low latency",
-    p3Text: "Understanding remains immediate without breaking the human rhythm of the conversation."
+    p3Text: "Understanding remains immediate without breaking the human rhythm of the conversation.",
+    tag1: "Certified semantic fidelity",
+    tag2: "< 400 ms latency guaranteed",
+    tag3: "26 languages, zero configuration",
+    tag4: "Certified for diplomatic B2G use"
   },
   features: {
     title: "Everything a global platform should do. Done better.",
@@ -423,6 +513,16 @@ export const en = {
     u5Text: "Multilingual hearings, mediations and consultations with rigorous precision.",
     u6Title: "Education & research",
     u6Text: "Courses, theses and academic collaborations without language barriers."
+  },
+  video: {
+    badge: "Translation in action",
+    title: "Each participant speaks their language. Everyone understands.",
+    sub: "Watch how Instant Talk translates an international conversation in real time, with a natural voice and synchronized subtitles."
+  },
+  langs: {
+    title: "26 languages. One platform.",
+    sub: "From Swahili to Japanese, from Arabic to Polish: every meeting automatically adapts to every participant.",
+    more: "+ 3 more"
   },
   booking: {
     badge: "Smart booking",
@@ -559,7 +659,25 @@ export const en = {
     faq5q: "Can I change plans at any time?",
     faq5a: "Yes. You can switch plans at any time from your dashboard. Changes take effect immediately.",
     faq6q: "Is there an option for large institutions?",
-    faq6a: "Yes. The Enterprise plan is designed for institutions, governments and large companies needing custom deployments, API integration and dedicated support."
+    faq6a: "Yes. The Enterprise plan is designed for institutions, governments and large companies needing custom deployments, API integration and dedicated support.",
+    supportStandard: "Standard support",
+    supportPrio: "Priority 24h support",
+    supportDedicated: "Dedicated manager 24/7",
+    groupCom: "Communication",
+    groupAI: "Artificial Intelligence",
+    groupTeam: "Team & Administration",
+    groupSec: "Security & Compliance",
+    cmpSemantics: "Advanced semantic analysis",
+    cmpCompanion: "AI meeting companion",
+    cmpReports: "Reports & analytics",
+    cmpMembers: "Member management",
+    cmpE2E: "End-to-end encryption",
+    cmpAudit: "Dedicated security audit",
+    cmpGDPR: "Advanced GDPR compliance",
+    trustE2E: "E2E encryption",
+    trustMeetings: "10,000+ meetings",
+    trustSupport: "Human support included",
+    compareAll: "Compare all plans in detail →"
   },
   stats: {
     meetings: "Multilingual meetings",
@@ -672,6 +790,36 @@ export const en = {
     monthlyTrend:   "Monthly trend",
     langBreakdown:  "Languages used",
     security:       "Security"
+  },
+  guide: {
+    badge:    "Product Guide",
+    title:    "Everything you can do with Instant Talk",
+    sub:      "From creating a meeting to voice cloning, every feature is accessible in a few clicks.",
+    cta:      "Access the workspace →",
+    c1title:  "Start an instant meeting",
+    c1s1:     "Click \"Instant Meeting\" in your workspace",
+    c1s2:     "A unique link is generated — share it with your participants",
+    c1s3:     "The room is live and translation starts automatically",
+    c2title:  "Create a multilingual webinar",
+    c2s1:     "Go to the Webinars section in the menu",
+    c2s2:     "Set the title, date and participant languages",
+    c2s3:     "Send invitations — each person receives a personalised link",
+    c3title:  "Invite participants",
+    c3s1:     "Copy the meeting link from your dashboard",
+    c3s2:     "Send it by email or message — no sign-up required",
+    c3s3:     "Guests join in their preferred language",
+    c4title:  "Enable live translation",
+    c4s1:     "Select your source language at the top of the room",
+    c4s2:     "Choose the output language for each participant",
+    c4s3:     "Audio translation starts as soon as you speak",
+    c5title:  "Enable voice cloning",
+    c5s1:     "In the room, click \"Clone my voice\"",
+    c5s2:     "Record 30 seconds of your voice",
+    c5s3:     "Translation will now use a voice close to yours",
+    c6title:  "Read the real-time transcript",
+    c6s1:     "Subtitles appear automatically in the room",
+    c6s2:     "Each participant sees the transcript in their language",
+    c6s3:     "An AI summary is automatically generated after the meeting"
   }
 };
 
