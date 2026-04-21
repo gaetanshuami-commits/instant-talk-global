@@ -18,6 +18,13 @@ export function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // Invités avec token valide → accès libre (pas d'abonnement requis)
+    const isGuest = request.nextUrl.searchParams.get("guest") === "1";
+    const hasToken = !!request.nextUrl.searchParams.get("t");
+    if (isGuest && hasToken) {
+      return NextResponse.next();
+    }
+
     const access = request.cookies.get("instanttalk_access")?.value;
 
     // Accès valide → laisser passer

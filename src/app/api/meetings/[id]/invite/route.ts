@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/prisma";
-import { buildMeetingLink } from "@/lib/meetings";
+import { buildJoinLink } from "@/lib/meetings";
 import { sendMeetingInvitationEmail } from "@/lib/email";
 
 export const runtime = "nodejs"
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest, ctx: Params) {
 
     if (!meetings[0]) return NextResponse.json({ error: "meeting_not_found" }, { status: 404 })
     const meeting = meetings[0]
-    const joinLink = buildMeetingLink(req.nextUrl.origin, meeting.roomId, meeting.inviteToken)
+    const joinLink = buildJoinLink(req.nextUrl.origin, meeting.roomId, meeting.inviteToken)
     const results = []
 
     for (const invitee of (meeting.invitees ?? [])) {

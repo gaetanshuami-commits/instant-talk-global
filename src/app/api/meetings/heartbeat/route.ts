@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
       `SELECT id, "hostEmail" FROM "Meeting" WHERE "roomId" = $1 LIMIT 1`,
       roomId
     );
-    if (!rows.length) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    // Ad-hoc rooms (not created from dashboard) have no DB row — treat as no-op
+    if (!rows.length) return NextResponse.json({ ok: true, tracked: false });
 
     // Optional host ownership check
     if (hostEmail && rows[0].hostEmail !== hostEmail) {
@@ -62,7 +63,8 @@ export async function GET(req: NextRequest) {
        FROM "Meeting" WHERE "roomId" = $1 LIMIT 1`,
       roomId
     );
-    if (!rows.length) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    // Ad-hoc room — assume host present so guest is never incorrectly kicked
+    if (!rows.length) return NextResponse.json({ hostPresent: true, status: "LIVE", tracked: false });
 
     const m = rows[0];
     const hostPresent = m.hostLastSeen
