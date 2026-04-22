@@ -101,13 +101,13 @@ useEffect(() => {
   const today = useMemo(() => meetings.filter((m) => m.startsAt.slice(0, 10) === day), [meetings, day]);
 
   async function book() {
-    if (!title.trim()) { notify("Remplis le titre de la rÃ©union", "err"); return; }
+    if (!title.trim()) { notify("Remplis le titre de la réunion", "err"); return; }
 
     const normalizedHost = host.trim().toLowerCase();
     if (!normalizedHost) { notify("Remplis l'email organisateur", "err"); return; }
 
     setBusy(true);
-    notify("CrÃ©ation en cours...", "info");
+    notify("Création en cours...", "info");
 
     try {
       const r = await fetch("/api/meetings", {
@@ -129,50 +129,25 @@ useEffect(() => {
       if (!r.ok) {
         const msg =
           d.error === "invalid_payload"      ? "Titre, email et dates valides requis" :
-          d.error === "invalid_meeting_range" ? "L'heure de fin doit Ãªtre aprÃ¨s l'heure de dÃ©but" :
-          d.error === "schema_missing"        ? "Tables DB manquantes â€” relancer un dÃ©ploiement Vercel" :
-          d.error === "connection_refused"    ? "Connexion DB refusÃ©e â€” vÃ©rifiez Supabase" :
-          d.error === "connection_timeout"    ? "DÃ©lai connexion DB dÃ©passÃ© â€” rÃ©essayez" :
-          d.error === "duplicate_entry"       ? "Une rÃ©union avec ce lien existe dÃ©jÃ  â€” rÃ©essayez" :
+          d.error === "invalid_meeting_range" ? "L'heure de fin doit être après l'heure de début" :
+          d.error === "schema_missing"        ? "Tables DB manquantes — relancer un déploiement Vercel" :
+          d.error === "connection_refused"    ? "Connexion DB refusée — vérifiez Supabase" :
+          d.error === "connection_timeout"    ? "Délai connexion DB dépassé — réessayez" :
+          d.error === "duplicate_entry"       ? "Une réunion avec ce lien existe déjà — réessayez" :
           d.detail                            ? `Erreur DB : ${d.detail.slice(0, 120)}` :
-                                               "Erreur lors de la crÃ©ation";
+                                               "Erreur lors de la création";
         notify(msg, "err");
         return;
       }
 
       setLink(d.guestLink ?? d.joinLink ?? "");
-
-      const guestEmails = (guests || "").split(",").map((g) => g.trim()).filter(Boolean);
-
-      if (guestEmails.length > 0 && d?.id) {
-        try {
-          const inviteRes = await fetch(`/api/meetings/${d.id}/invite`, { method: "POST" });
-          const inviteJson = await inviteRes.json();
-          console.log("[schedule->invite]", inviteJson);
-
-          const sentCount = Array.isArray(inviteJson?.results)
-            ? inviteJson.results.filter((x: { sent?: boolean }) => x?.sent).length
-            : 0;
-
-          if (sentCount > 0) {
-            notify(`Réunion créée et ${sentCount} invitation(s) envoyée(s)`, "ok");
-          } else {
-            notify("Réunion créée, mais l'envoi des invitations a échoué", "err");
-          }
-        } catch (e) {
-          console.error("[schedule->invite] failed", e);
-          notify("Réunion créée, mais l'envoi des invitations a échoué", "err");
-        }
-      } else {
-        notify("Réunion créée avec succès !", "ok");
-      }
-
+      notify("Réunion créée avec succès !", "ok");
       setTitle("");
       setDesc("");
       setGuests("");
       load();
     } catch {
-      notify("Erreur rÃ©seau â€” vÃ©rifiez votre connexion", "err");
+      notify("Erreur réseau — vérifiez votre connexion", "err");
     } finally {
       setBusy(false);
     }
@@ -182,12 +157,12 @@ useEffect(() => {
     const normalizedHost = host.trim().toLowerCase();
 
     if (!normalizedHost) {
-      notify("Remplis l'email organisateur avant de crÃ©er une rÃ©union", "err");
+      notify("Remplis l'email organisateur avant de créer une réunion", "err");
       return;
     }
 
     setBusy(true);
-    notify("CrÃ©ation en cours...", "info");
+    notify("Création en cours...", "info");
     const now = new Date();
 
     try {
@@ -195,8 +170,8 @@ useEffect(() => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: "Nouvelle rÃ©union",
-          description: "InstantanÃ©e",
+          title: "Nouvelle réunion",
+          description: "Instantanée",
           hostEmail: normalizedHost,
           startsAt: toInput(now),
           endsAt: toInput(new Date(now.getTime() + 3600000)),
@@ -210,20 +185,20 @@ useEffect(() => {
       if (!r.ok) {
         const msg =
           d.error === "invalid_payload"   ? "Email organisateur requis" :
-          d.error === "schema_missing"    ? "Tables DB manquantes â€” relancer un dÃ©ploiement Vercel" :
-          d.error === "connection_refused"? "Connexion DB refusÃ©e â€” vÃ©rifiez Supabase" :
-          d.error === "connection_timeout"? "DÃ©lai connexion DB dÃ©passÃ© â€” rÃ©essayez" :
+          d.error === "schema_missing"    ? "Tables DB manquantes — relancer un déploiement Vercel" :
+          d.error === "connection_refused"? "Connexion DB refusée — vérifiez Supabase" :
+          d.error === "connection_timeout"? "Délai connexion DB dépassé — réessayez" :
           d.detail                        ? `Erreur DB : ${d.detail.slice(0, 120)}` :
-                                           "Erreur lors de la crÃ©ation";
+                                           "Erreur lors de la création";
         notify(msg, "err");
         return;
       }
 
       setLink(d.guestLink ?? d.joinLink ?? "");
-      notify("RÃ©union instantanÃ©e crÃ©Ã©e !", "ok");
+      notify("Réunion instantanée créée !", "ok");
       load();
     } catch {
-      notify("Erreur rÃ©seau â€” vÃ©rifiez votre connexion", "err");
+      notify("Erreur réseau — vérifiez votre connexion", "err");
     } finally {
       setBusy(false);
     }
@@ -233,10 +208,10 @@ useEffect(() => {
     notify("Envoi des invitations...", "info");
     try {
       const r = await fetch(`/api/meetings/${id}/invite`, { method: "POST" });
-      notify(r.ok ? "Invitations envoyÃ©es !" : "Erreur lors de l'envoi", r.ok ? "ok" : "err");
+      notify(r.ok ? "Invitations envoyées !" : "Erreur lors de l'envoi", r.ok ? "ok" : "err");
       if (r.ok) load();
     } catch {
-      notify("Erreur rÃ©seau", "err");
+      notify("Erreur réseau", "err");
     }
   }
 
@@ -244,7 +219,7 @@ useEffect(() => {
     notify("Suppression...", "info");
     try {
       await fetch(`/api/meetings/${id}`, { method: "DELETE" });
-      notify("RÃ©union supprimÃ©e", "ok");
+      notify("Réunion supprimée", "ok");
       load();
     } catch {
       notify("Erreur lors de la suppression", "err");
@@ -254,13 +229,13 @@ useEffect(() => {
   async function copy(url: string) {
     try {
       await navigator.clipboard.writeText(url);
-      notify("Lien copiÃ© dans le presse-papier !", "ok");
+      notify("Lien copié dans le presse-papier !", "ok");
     } catch {
       notify("Impossible de copier le lien", "err");
     }
   }
 
-  /* â”€â”€ styles â”€â”€ */
+  /* ── styles ── */
   const S = {
     card: { borderRadius: 28, padding: 24, background: "linear-gradient(180deg,rgba(14,20,38,.96),rgba(10,16,31,.95))", border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 30px 80px rgba(0,0,0,.24)" } as React.CSSProperties,
     input: { height: 54, borderRadius: 16, padding: "0 16px", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 15, width: "100%", boxSizing: "border-box" as const },
@@ -272,11 +247,11 @@ useEffect(() => {
 
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
-      {/* â”€â”€ Header â”€â”€ */}
+      {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 42, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>Planification & calendrier</h1>
-          <p style={{ margin: "10px 0 0", opacity: .72, fontSize: 16 }}>Cockpit de rÃ©unions premium.</p>
+          <p style={{ margin: "10px 0 0", opacity: .72, fontSize: 16 }}>Cockpit de réunions premium.</p>
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <button
@@ -284,7 +259,7 @@ useEffect(() => {
             disabled={busy}
             style={{ height: 48, padding: "0 20px", borderRadius: 999, border: 0, background: "linear-gradient(135deg,#2563eb,#4f46e5)", color: "#fff", fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 18px 40px rgba(37,99,235,.28)" }}
           >
-            {busy ? "CrÃ©ation..." : "Nouvelle rÃ©union"}
+            {busy ? "Création..." : "Nouvelle réunion"}
           </button>
           <button
             onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth" })}
@@ -293,18 +268,18 @@ useEffect(() => {
             Planifier
           </button>
           <span style={{ height: 44, padding: "0 16px", borderRadius: 999, display: "flex", alignItems: "center", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.08)", fontWeight: 700 }}>
-            {future.length} Ã  venir
+            {future.length} à venir
           </span>
         </div>
       </div>
 
-      {/* â”€â”€ Stats â”€â”€ */}
+      {/* ── Stats ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
         {[
-          ["RÃ©unions futures", future.length],
-          ["RÃ©unions passÃ©es", past.length],
+          ["Réunions futures", future.length],
+          ["Réunions passées", past.length],
           ["Sessions du jour", today.length],
-          ["InvitÃ©s estimÃ©s", meetings.reduce((a, m) => a + m.invitees.length, 0)],
+          ["Invités estimés", meetings.reduce((a, m) => a + m.invitees.length, 0)],
         ].map(([label, value]) => (
           <div key={String(label)} style={{ borderRadius: 22, padding: 20, background: "linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035))", border: "1px solid rgba(255,255,255,.1)" }}>
             <div style={{ fontSize: 13, opacity: .7, marginBottom: 10 }}>{label}</div>
@@ -313,28 +288,28 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* â”€â”€ Form + Calendar â”€â”€ */}
+      {/* ── Form + Calendar ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 18, marginBottom: 18 }}>
 
         {/* Form */}
         <div ref={formRef} style={S.card}>
-          <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>Programmer une rÃ©union</div>
-          <div style={{ opacity: .68, marginBottom: 18 }}>CrÃ©e une session avec lien sÃ©curisÃ© et invitÃ©s.</div>
+          <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>Programmer une réunion</div>
+          <div style={{ opacity: .68, marginBottom: 18 }}>Crée une session avec lien sécurisé et invités.</div>
           <div style={{ display: "grid", gap: 12 }}>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre *" style={S.input} />
             <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description (optionnel)" style={{ ...S.input, height: "auto", minHeight: 100, padding: 16, resize: "vertical" }} />
             <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="Email organisateur *" style={S.input} />
-            <input value={guests} onChange={(e) => setGuests(e.target.value)} placeholder="InvitÃ©s : email1, email2, ..." style={S.input} />
+            <input value={guests} onChange={(e) => setGuests(e.target.value)} placeholder="Invités : email1, email2, ..." style={S.input} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} style={S.input} />
               <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} style={S.input} />
             </div>
             <button onClick={book} disabled={busy} style={{ height: 50, padding: "0 24px", borderRadius: 999, border: 0, background: "linear-gradient(135deg,#6d74ff,#7c3aed)", color: "#fff", fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-              {busy ? "CrÃ©ation..." : "Programmer"}
+              {busy ? "Création..." : "Programmer"}
             </button>
             {link && (
               <div style={{ borderRadius: 16, padding: 16, background: "rgba(99,102,241,.1)", border: "1px solid rgba(139,163,255,.2)" }}>
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Lien invitÃ© (Ã  partager)</div>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Lien invité (à partager)</div>
                 <div style={{ wordBreak: "break-all", opacity: .85, fontSize: 14 }}>{link}</div>
                 <button onClick={() => copy(link)} style={{ marginTop: 10, height: 36, padding: "0 16px", borderRadius: 999, border: 0, background: "rgba(99,102,241,.3)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
                   Copier
@@ -348,36 +323,36 @@ useEffect(() => {
         <div style={{ ...S.card, display: "grid", alignContent: "start", gap: 16 }}>
           <div>
             <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>Calendrier</div>
-            <div style={{ opacity: .68 }}>Sessions du jour sÃ©lectionnÃ©.</div>
+            <div style={{ opacity: .68 }}>Sessions du jour sélectionné.</div>
           </div>
           <input type="date" value={day} onChange={(e) => setDay(e.target.value)} style={{ ...S.input, height: 50 }} />
           {today.length === 0
-            ? <div style={{ padding: 16, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", opacity: .7 }}>Aucune rÃ©union ce jour</div>
+            ? <div style={{ padding: 16, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", opacity: .7 }}>Aucune réunion ce jour</div>
             : today.map((m) => (
               <div key={m.id} style={{ padding: 16, borderRadius: 16, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
                 <div style={{ fontWeight: 800 }}>{m.title}</div>
                 <div style={{ opacity: .7, marginTop: 4, fontSize: 14 }}>{pretty(m.startsAt)}</div>
-                <div style={{ opacity: .7, fontSize: 14 }}>{m.invitees.length} invitÃ©(s)</div>
+                <div style={{ opacity: .7, fontSize: 14 }}>{m.invitees.length} invité(s)</div>
               </div>
             ))}
         </div>
       </div>
 
-      {/* â”€â”€ Future / Past â”€â”€ */}
+      {/* ── Future / Past ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
 
         {/* Future */}
         <div style={S.card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
             <div>
-              <div style={{ fontSize: 24, fontWeight: 800 }}>RÃ©unions futures</div>
-              <div style={{ opacity: .68, marginTop: 4 }}>Prochains rendez-vous planifiÃ©s.</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>Réunions futures</div>
+              <div style={{ opacity: .68, marginTop: 4 }}>Prochains rendez-vous planifiés.</div>
             </div>
             <span style={{ fontWeight: 800, color: "#b9c6ff" }}>{future.length}</span>
           </div>
           <div style={{ display: "grid", gap: 14 }}>
             {future.length === 0
-              ? <div style={{ padding: 18, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", opacity: .75 }}>Aucune rÃ©union planifiÃ©e</div>
+              ? <div style={{ padding: 18, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", opacity: .75 }}>Aucune réunion planifiée</div>
               : future.map((m) => (
                 <div key={m.id} style={{ borderRadius: 20, padding: 18, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "grid", gap: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -390,20 +365,20 @@ useEffect(() => {
                           color: m.status === "LIVE" ? "#4ade80" : "rgba(255,255,255,.5)",
                           border: `1px solid ${m.status === "LIVE" ? "rgba(74,222,128,.3)" : "rgba(255,255,255,.1)"}`,
                         }}>
-                          {m.status === "LIVE" ? "â— LIVE" : m.status}
+                          {m.status === "LIVE" ? "● LIVE" : m.status}
                         </span>
                       </div>
-                      <div style={{ opacity: .7, marginTop: 4, fontSize: 14 }}>{pretty(m.startsAt)} â†’ {pretty(m.endsAt)}</div>
+                      <div style={{ opacity: .7, marginTop: 4, fontSize: 14 }}>{pretty(m.startsAt)} → {pretty(m.endsAt)}</div>
                     </div>
                     <div style={{ height: 40, minWidth: 40, borderRadius: 999, background: "rgba(99,102,241,.2)", border: "1px solid rgba(139,163,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>
                       {initials(m.title)}
                     </div>
                   </div>
-                  <div style={{ opacity: .7, fontSize: 14 }}>{m.invitees.map((i) => i.email).join(", ") || "Aucun invitÃ©"}</div>
+                  <div style={{ opacity: .7, fontSize: 14 }}>{m.invitees.map((i) => i.email).join(", ") || "Aucun invité"}</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => copy(m.guestLink || m.joinLink)} style={S.btn("rgba(255,255,255,.08)")}>Copier lien invitÃ©</button>
+                    <button onClick={() => copy(m.guestLink || m.joinLink)} style={S.btn("rgba(255,255,255,.08)")}>Copier lien invité</button>
                     <button onClick={() => invite(m.id)} style={S.btn("rgba(99,102,241,.2)")}>Inviter par email</button>
-                    <button onClick={() => window.open(m.joinLink, "_blank")} style={S.btn("linear-gradient(135deg,#6d74ff,#7c3aed)")}>DÃ©marrer (host)</button>
+                    <button onClick={() => window.open(m.joinLink, "_blank")} style={S.btn("linear-gradient(135deg,#6d74ff,#7c3aed)")}>Démarrer (host)</button>
                     <button onClick={() => remove(m.id)} style={S.btn("rgba(220,38,38,.2)")}>Supprimer</button>
                   </div>
                 </div>
@@ -415,19 +390,19 @@ useEffect(() => {
         <div style={S.card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
             <div>
-              <div style={{ fontSize: 24, fontWeight: 800 }}>RÃ©unions passÃ©es</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>Réunions passées</div>
               <div style={{ opacity: .68, marginTop: 4 }}>Historique des sessions.</div>
             </div>
             <span style={{ fontWeight: 800, color: "#b9c6ff" }}>{past.length}</span>
           </div>
           <div style={{ display: "grid", gap: 14 }}>
             {past.length === 0
-              ? <div style={{ padding: 18, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", opacity: .75 }}>Aucune rÃ©union passÃ©e</div>
+              ? <div style={{ padding: 18, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", opacity: .75 }}>Aucune réunion passée</div>
               : past.map((m) => (
                 <div key={m.id} style={{ borderRadius: 20, padding: 18, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
                   <div style={{ fontSize: 17, fontWeight: 800 }}>{m.title}</div>
                   <div style={{ opacity: .7, marginTop: 6, fontSize: 14 }}>{pretty(m.startsAt)}</div>
-                  <div style={{ opacity: .6, fontSize: 14, marginTop: 2 }}>{m.invitees.length} invitÃ©(s)</div>
+                  <div style={{ opacity: .6, fontSize: 14, marginTop: 2 }}>{m.invitees.length} invité(s)</div>
                 </div>
               ))}
           </div>
@@ -445,5 +420,4 @@ export default function MeetingsPage() {
     </Suspense>
   );
 }
-
 

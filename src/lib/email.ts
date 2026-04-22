@@ -1,4 +1,4 @@
-﻿export async function sendMeetingInvitationEmail(input: {
+export async function sendMeetingInvitationEmail(input: {
   to: string;
   subject: string;
   html: string;
@@ -6,8 +6,12 @@
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.MEETINGS_FROM_EMAIL?.trim();
 
-  if (!apiKey || !from) {
-    return { sent: false, reason: "missing_email_provider_config" as const };
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY missing");
+  }
+
+  if (!from) {
+    throw new Error("MEETINGS_FROM_EMAIL missing");
   }
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -24,10 +28,11 @@
     }),
   });
 
+  const raw = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`email_send_failed:${text}`);
+    throw new Error(`email_send_failed:${raw}`);
   }
 
-  return { sent: true as const };
+  return { sent: true as const, raw };
 }

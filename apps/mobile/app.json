@@ -13,9 +13,12 @@
       "backgroundColor": "#04070f"
     },
     "updates": {
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/983273f8-1311-433f-b97f-e205e1d50cf0"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.instanttalk.app",
@@ -26,20 +29,96 @@
         "NSMicrophoneUsageDescription": "Instant Talk uses the microphone for real-time voice translation and meeting audio.",
         "NSPhotoLibraryUsageDescription": "Instant Talk uses the photo library to share images in meetings.",
         "NSPhotoLibraryAddUsageDescription": "Instant Talk saves meeting-related images to your photo library.",
-        "UIBackgroundModes": ["audio", "voip", "remote-notification"],
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "remote-notification",
+          "audio",
+          "voip",
+          "remote-notification"
+        ],
         "ITSAppUsesNonExemptEncryption": false,
         "NSUserTrackingUsageDescription": "Instant Talk does not track you. This permission is not used.",
-        "CFBundleLocalizations": ["en", "fr", "es", "de", "it", "pt", "ja", "zh-Hans", "ar", "ko", "hi", "sw", "ru", "nl", "pl", "tr", "id", "vi", "th", "cs", "da", "fi", "hu", "nb", "ro", "uk"]
+        "CFBundleLocalizations": [
+          "en",
+          "fr",
+          "es",
+          "de",
+          "it",
+          "pt",
+          "ja",
+          "zh-Hans",
+          "ar",
+          "ko",
+          "hi",
+          "sw",
+          "ru",
+          "nl",
+          "pl",
+          "tr",
+          "id",
+          "vi",
+          "th",
+          "cs",
+          "da",
+          "fi",
+          "hu",
+          "nb",
+          "ro",
+          "uk",
+          "en",
+          "fr",
+          "es",
+          "de",
+          "it",
+          "pt",
+          "ja",
+          "zh-Hans",
+          "ar",
+          "ko",
+          "hi",
+          "sw",
+          "ru",
+          "nl",
+          "pl",
+          "tr",
+          "id",
+          "vi",
+          "th",
+          "cs",
+          "da",
+          "fi",
+          "hu",
+          "nb",
+          "ro",
+          "uk"
+        ]
       },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
             "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
           },
           {
             "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
-            "NSPrivacyAccessedAPITypeReasons": ["35F9.1"]
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
           }
         ]
       }
@@ -50,7 +129,7 @@
         "backgroundColor": "#04070f"
       },
       "package": "com.instanttalk.app",
-      "versionCode": 1,
+      "versionCode": 3,
       "compileSdkVersion": 35,
       "targetSdkVersion": 35,
       "minSdkVersion": 24,
@@ -68,9 +147,22 @@
         "android.permission.FOREGROUND_SERVICE_MICROPHONE",
         "android.permission.VIBRATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CHANGE_NETWORK_STATE",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.POST_NOTIFICATIONS"
-      ],
-      "googleServicesFile": "./google-services.json"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -107,8 +199,17 @@
       "typedRoutes": true
     },
     "extra": {
-      "eas": { "projectId": "YOUR_EAS_PROJECT_ID" },
-      "apiUrl": "https://instant-talk.com"
+      "eas": {
+        "projectId": "983273f8-1311-433f-b97f-e205e1d50cf0"
+      },
+      "apiUrl": "https://instant-talk.com",
+      "router": {
+        "origin": false
+      }
+    },
+    "owner": "gagashuami",
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
