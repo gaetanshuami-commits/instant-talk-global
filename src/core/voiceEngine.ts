@@ -74,17 +74,18 @@ let ttsCtx: AudioContext | null = null
 let ttsDestNode: MediaStreamAudioDestinationNode | null = null
 let playbackEndTime = 0
 let _micMixSource: MediaStreamAudioSourceNode | null = null
+let _ttsStateChangeListener: (() => void) | null = null
 
 export function getTTSMediaStream(): MediaStream {
   if (!ttsCtx || ttsCtx.state === "closed") {
     ttsCtx = new AudioContext({ sampleRate: 48000 })
     ttsDestNode = ttsCtx.createMediaStreamDestination()
-    // Auto-resume when browser suspends context (tab switch, device change)
-    ttsCtx.addEventListener("statechange", () => {
+    _ttsStateChangeListener = () => {
       if (ttsCtx?.state === "suspended") {
         ttsCtx.resume().catch(() => {})
       }
-    })
+    }
+    ttsCtx.addEventListener("statechange", _ttsStateChangeListener)
   }
   return ttsDestNode!.stream
 }
@@ -130,7 +131,8 @@ let recognizer: any       = null   // Azure TranslationRecognizer
 let azureToken            = ""
 let azureRegion           = ""
 let azureTokenExpiry      = 0      // epoch ms; refresh at 9 min (expiry = 10 min)
-let _restartTimer: ReturnType<typeof setTimeout> | null = null  // auto-restart on transient error
+let _restartTimer:   ReturnType<typeof setTimeout> | null = null  // auto-restart on transient error
+let _restartAttempt = 0  // exponential backoff counter — reset on successful start
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeSynth: any      = null
 let activeSynthDone: (() => void) | null = null
@@ -148,8 +150,26 @@ type TTSJob = { text: string; lang: string; voiceMap: Record<string, string> }
 const _ttsQueue: TTSJob[] = []
 let   _ttsRunning = false
 
-// Dedup: évite de jouer deux fois le même texte (spéculatif + final identiques)
-let _ttsLastEnqueued = ""
+// Dedup: évite de jouer deux fois le même texte si isFinal se déclenche deux fois
+// pour la même reconnaissance (edge case WSR). 300ms suffit — isFinal a déjà son
+// propre dedup à 3s dans wsr.onresult. Le TTS spéculatif est désactivé.
+let _ttsLastEnqueued   = ""
+let _ttsLastEnqueuedAt = 0
+
+// ─── Scheduled AudioBufferSources — stopped on interrupt ─────────────────────
+// When a TTS sentence is interrupted mid-playback, chunks already scheduled via
+// AudioBufferSource.start() keep playing unless explicitly stopped. This causes
+// the "weird noise" glitch when a new sentence overrides the current one.
+const _scheduledSources: AudioBufferSourceNode[] = []
+
+function stopScheduledSources(): void {
+  const now = ttsCtx?.currentTime ?? 0
+  for (const src of _scheduledSources) {
+    try { src.stop(now) } catch {}
+  }
+  _scheduledSources.length = 0
+  playbackEndTime = 0
+}
 
 // AbortController for the in-flight ElevenLabs fetch — cancelled when a new
 // sentence starts or stopTranslation() is called.
@@ -208,14 +228,21 @@ async function streamPCMAudio(
   ensureAudioContext()
   const ctx  = ttsCtx!
   const dest = ttsDestNode!
-  if (ctx.state === "suspended") await ctx.resume()
+  console.log(`[TTS] streamPCMAudio ctx=${ctx.state}`)
+  if (ctx.state === "suspended") {
+    try { await ctx.resume() } catch {}
+    console.log(`[TTS] ctx after resume: ${ctx.state}`)
+  }
 
   const reader = stream.getReader()
   // 5 ms chunks — premier audio audible dès le premier mot traduit
   const MIN_BYTES = Math.floor(sampleRate * 0.005) * 2
   let pending = new Uint8Array(0)
+  let _firstChunk = true
 
   function playChunk(data: Uint8Array): void {
+    if (_firstChunk) { _firstChunk = false; console.log(`[TTS] first audio chunk ${data.length}B → Agora stream`) }
+    if (signal.aborted) return
     const samples = Math.floor(data.length / 2)
     if (samples < 1) return
     const buf  = ctx.createBuffer(1, samples, sampleRate)
@@ -227,15 +254,29 @@ async function streamPCMAudio(
     src.connect(dest)   // → Agora interpreter track uniquement (remote entend, pas le speaker)
     const now     = ctx.currentTime
     const startAt = Math.max(now + 0.005, playbackEndTime)
+    // Track so stopScheduledSources() can stop this chunk on interrupt
+    _scheduledSources.push(src)
+    src.onended = () => {
+      const i = _scheduledSources.indexOf(src)
+      if (i !== -1) _scheduledSources.splice(i, 1)
+    }
     src.start(startAt)
     playbackEndTime = startAt + buf.duration
   }
 
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (signal.aborted) { reader.cancel(); return }
-      if (done) break
+    while (!signal.aborted) {
+      let done = false
+      let value: Uint8Array | undefined
+      try {
+        // reader.read() can throw "BodyStreamBuffer" when the stream is cancelled
+        // externally (AbortController fired). Catch individually so the outer
+        // finally still runs and the function exits cleanly.
+        ;({ done, value } = await reader.read())
+      } catch {
+        break
+      }
+      if (done || signal.aborted) break
       if (value?.length) {
         const merged = new Uint8Array(pending.length + value.length)
         merged.set(pending)
@@ -247,14 +288,18 @@ async function streamPCMAudio(
         }
       }
     }
-    // Vider le reste (aligner sur 2 octets = 1 sample Int16)
+    // Drain remaining bytes — only when we completed normally (not aborted)
     if (!signal.aborted && pending.length >= 2) {
       playChunk(pending.slice(0, pending.length & ~1))
     }
-  } catch { reader.cancel() }
+  } finally {
+    // Always release the reader lock — prevents "BodyStreamBuffer already locked" on next call
+    try { reader.cancel() } catch {}
+  }
 }
 
 async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
+  console.log(`[TTS] speakWithElevenLabs → "${text.slice(0, 40)}" lang=${lang} ctx=${ttsCtx?.state ?? "null"}`)
   _elAbort?.abort()
   const ctrl = new AbortController()
   _elAbort = ctrl
@@ -271,11 +316,18 @@ async function speakWithElevenLabs(text: string, lang: string): Promise<void> {
       }),
       signal: ctrl.signal,
     })
+    console.log(`[TTS] EL response: ${res.status}`)
     if (!res.ok) throw new Error(`ElevenLabs ${res.status}`)
     if (!res.body) throw new Error("No response stream")
     await streamPCMAudio(res.body, 16000, ctrl.signal)
+    console.log("[TTS] PCM stream complete")
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") return
+    // DOMException on Chrome, plain Error on Firefox/Safari
+    const isAbort = err instanceof Error && (
+      err.name === "AbortError" ||
+      /BodyStreamBuffer|aborted/i.test(err.message)
+    )
+    if (isAbort) return
     console.error("[TTS] ElevenLabs error:", err)
   } finally {
     if (_elAbort === ctrl) _elAbort = null
@@ -457,13 +509,11 @@ async function startWebSpeechFallback(
     let prefetchText   = ""
     let prefetchCache: Record<string, string> | null = null
 
-    // ── Pré-chargement + TTS spéculatif ──────────────────────────────────────
-    // Dès 80ms de pause dans la parole :
-    //   1. Lance la traduction en arrière-plan (pré-chargement)
-    //   2. Quand la traduction arrive, démarre ElevenLabs IMMÉDIATEMENT (TTS spéculatif)
-    //      → ElevenLabs génère déjà l'audio pendant que l'utilisateur finit sa phrase
-    //   3. Quand isFinal arrive, la voix joue sans délai (déjà en train de générer)
-    //   Si le texte final ≠ texte spéculatif → dedup annule et relance avec le bon texte.
+    // ── Pré-chargement de traduction (sans TTS spéculatif) ───────────────────
+    // Dès 80ms de pause dans la parole, la traduction est fetchée en avance et
+    // mise en cache. Quand isFinal arrive, on utilise le cache (0ms lookup) →
+    // ElevenLabs démarre immédiatement. TTS spéculatif désactivé car il causait
+    // un cascade d'AbortError et bloquait le TTS final via le dedup.
     const prefetchTranslation = (text: string) => {
       if (text === prefetchText && prefetchCache) return
       prefetchText  = text
@@ -475,13 +525,10 @@ async function startWebSpeechFallback(
       }).then(r => r.ok ? r.json() : null).then(data => {
         if (!data || prefetchText !== text) return
         prefetchCache = data.translations ?? {}
-        // ── TTS spéculatif : démarrer ElevenLabs avant isFinal ─────────────
-        // Condition : texte > 2 mots (évite les TTS sur fragments courts)
-        const cache = prefetchCache
-        if (ttsLang && cache && cache[ttsLang] && text.trim().split(/\s+/).length >= 1) {
-          const rc = getRemoteCount ? getRemoteCount() : 1
-          if (rc > 0) enqueueTTS(cache[ttsLang], ttsLang, voiceMap)
-        }
+        // Translation is cached here; TTS fires only on isFinal (see wsr.onresult).
+        // Starting ElevenLabs on every 80ms partial triggered an abort cascade:
+        // each new partial aborted the previous fetch → BodyStreamBuffer flood, and
+        // the dedup blocked the final TTS if the last speculative text matched the final.
       }).catch(() => {})
     }
 
@@ -543,10 +590,11 @@ async function startWebSpeechFallback(
         for (const lang of targets) {
           const translated = batchTranslations[lang] ?? transcript
           callbacks.onFinal(lang, translated)
-          // enqueueTTS intègre le dedup : si TTS spéculatif joue déjà ce texte → no-op
           if (ttsLang && lang === ttsLang) {
             const rc = getRemoteCount ? getRemoteCount() : 1
+            console.log(`[TTS] isFinal → "${translated.slice(0, 40)}" | remoteCount=${rc}`)
             if (rc > 0) enqueueTTS(translated, lang, voiceMap)
+            else console.warn("[TTS] SKIP — no remote participants tracked yet")
           }
         }
       }
@@ -661,10 +709,10 @@ export async function startTranslation(
   speechConfig.speechRecognitionLanguage = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
 
   // ── Latency ────────────────────────────────────────────────────────────────
-  // 150 ms end-silence: fires ~50 ms earlier than the previous 200 ms value
-  // while still being long enough to avoid premature sentence cuts in natural speech.
+  // 300 ms end-silence: 150 ms was too aggressive — natural speech pauses (200-500 ms)
+  // were causing premature phrase cuts and flooding the pipeline with no-speech events.
   speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "150"
+    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "300"
   )
   speechConfig.setProperty(
     sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "30000"
@@ -699,6 +747,8 @@ export async function startTranslation(
     if (e.result.reason !== sdk.ResultReason.TranslatedSpeech) return
     if (!e.result.translations) return
     const recognizedText = e.result.text ?? ""
+    console.log(`[Azure] recognized: "${recognizedText.slice(0, 60)}"`)
+
 
     // Traductions retournées par le service
     const missingLangs: string[] = []
@@ -754,7 +804,7 @@ export async function startTranslation(
     try { r.close() } catch {}
 
     if (isQuota || isAuth) {
-      // Service indisponible → basculer sur Web Speech API
+      _restartAttempt = 0
       activateWebSpeechFallback(
         "Service STT indisponible",
         sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount
@@ -762,7 +812,9 @@ export async function startTranslation(
         callbacks.onError?.("Reconnaissance vocale indisponible. Utilisez Chrome ou Edge.")
       })
     } else {
-      // Erreur transitoire — redémarrage automatique après 1 seconde
+      // Erreur transitoire — backoff exponentiel : 1s, 2s, 4s, 8s… max 30s
+      _restartAttempt++
+      const delay = Math.min(1000 * Math.pow(2, _restartAttempt - 1), 30_000)
       if (_restartTimer) clearTimeout(_restartTimer)
       _restartTimer = setTimeout(() => {
         _restartTimer = null
@@ -772,13 +824,14 @@ export async function startTranslation(
         ).catch(() => {
           callbacks.onError?.("Erreur de reconnaissance vocale. Réessayez.")
         })
-      }, 1000)
+      }, delay)
     }
   }
 
   await new Promise<void>((resolve, reject) => {
     r.startContinuousRecognitionAsync(resolve, reject)
   })
+  _restartAttempt = 0  // successful start — reset backoff
 }
 
 // ─── Close AudioContext (call on room unmount) ────────────────────────────────
@@ -793,7 +846,12 @@ export function closeAudioContext(): void {
   _elAbort?.abort()
   _elAbort = null
   removeMicFromTTSMix()
+  stopScheduledSources()
   if (ttsCtx) {
+    if (_ttsStateChangeListener) {
+      ttsCtx.removeEventListener("statechange", _ttsStateChangeListener)
+      _ttsStateChangeListener = null
+    }
     try { ttsCtx.close() } catch {}
     ttsCtx       = null
     ttsDestNode  = null
@@ -808,11 +866,11 @@ export async function stopTranslation(): Promise<void> {
   // Clear the TTS queue so no stale sentences play after stop
   _ttsQueue.length = 0
   _ttsRunning = false
-  _ttsLastEnqueued = ""  // reset dedup
+  _ttsLastEnqueued   = ""  // reset dedup
+  _ttsLastEnqueuedAt = 0
 
-  // Reset audio timeline — prevents a long scheduling backlog if sentences
-  // accumulated while the user was speaking quickly.
-  playbackEndTime = 0
+  // Stop any audio already scheduled — clean silence immediately on stop
+  stopScheduledSources()
 
   cancelActiveSynth()  // also aborts any in-flight EL request
 
@@ -825,6 +883,7 @@ export async function stopTranslation(): Promise<void> {
 
   // Cancel any pending auto-restart
   if (_restartTimer) { clearTimeout(_restartTimer); _restartTimer = null }
+  _restartAttempt = 0
 
   // Stop Web Speech API fallback if active
   stopWebSpeechFallback()
@@ -833,6 +892,10 @@ export async function stopTranslation(): Promise<void> {
   if (!recognizer) return
   const r = recognizer
   recognizer = null
+  // Null callbacks before stopping — prevents buffered events from firing into stale closures
+  r.recognizing = null
+  r.recognized  = null
+  r.canceled    = null
   await new Promise<void>((resolve) => {
     r.stopContinuousRecognitionAsync(resolve, () => resolve())
   })
@@ -846,28 +909,39 @@ export async function stopTranslation(): Promise<void> {
 // from building up when the speaker talks faster than ElevenLabs can generate.
 
 function enqueueTTS(text: string, lang: string, voiceMap: Record<string, string>): void {
-  // Dedup: si le texte est exactement le même que ce qui tourne déjà, on ne repart pas.
-  // Cas typique : TTS spéculatif déjà lancé, le final arrive avec le même texte.
-  if (text === _ttsLastEnqueued && _ttsRunning) return
-  _ttsLastEnqueued = text
+  // Dedup court (300ms) : évite que isFinal se déclenche deux fois pour la même
+  // reconnaissance (edge case WSR). Suffisant car isFinal a son propre dedup à 3s.
+  const now = Date.now()
+  if (text === _ttsLastEnqueued && (now - _ttsLastEnqueuedAt) < 300) return
+  _ttsLastEnqueued   = text
+  _ttsLastEnqueuedAt = now
   // Drop stale queued items — only keep the job that was just added.
   _ttsQueue.length = 0
   _ttsQueue.push({ text, lang, voiceMap })
-  if (!_ttsRunning) void drainTTSQueue()
+  if (_ttsRunning) {
+    // Interrupt ongoing playback: abort the in-flight EL fetch + stop already-scheduled
+    // AudioBufferSources. Without stopScheduledSources() the old chunks keep playing
+    // in parallel with the new sentence → noise/double audio.
+    _elAbort?.abort()
+    _elAbort = null
+    stopScheduledSources()
+  } else {
+    void drainTTSQueue().catch(() => {})
+  }
 }
 
 async function drainTTSQueue(): Promise<void> {
+  if (_ttsRunning) return  // already running — the existing loop will pick up queue items
   _ttsRunning = true
-  while (_ttsQueue.length > 0) {
-    const job = _ttsQueue.shift()!
-    cancelActiveSynth()
-    // ElevenLabs gère toutes les langues :
-    // - langues officiellement supportées : language_code envoyé pour qualité maximale
-    // - langues non listées (sw, ln) : auto-detect (pas de language_code) → voice quand même
-    // Azure TTS n'est plus utilisé (clé non configurée = silence systématique).
-    await speakWithElevenLabs(job.text, job.lang)
+  try {
+    while (_ttsQueue.length > 0) {
+      const job = _ttsQueue.shift()!
+      cancelActiveSynth()
+      await speakWithElevenLabs(job.text, job.lang)
+    }
+  } finally {
+    _ttsRunning = false
   }
-  _ttsRunning = false
 }
 
 function cancelActiveSynth(): void {
@@ -877,13 +951,13 @@ function cancelActiveSynth(): void {
   activeSynthDone = null
   if (synth) {
     try { synth.close() } catch {}
-    // Clear the cache — the synthesizer is now closed; next call will reconnect.
     if (_azureSynth === synth) { _azureSynth = null; _azureSynthVoice = "" }
   }
   done?.()
-  // Also abort any in-flight ElevenLabs request
   _elAbort?.abort()
   _elAbort = null
+  // Stop any audio already scheduled — prevents zombie chunks playing after cancel
+  stopScheduledSources()
 }
 
 // ─── Web Audio: sequential TTS playback into Agora interpreter track ──────────
@@ -903,6 +977,11 @@ async function scheduleAudio(audioData: ArrayBuffer): Promise<void> {
 
   const now     = ctx.currentTime
   const startAt = Math.max(now + 0.005, playbackEndTime)
+  _scheduledSources.push(source)
+  source.onended = () => {
+    const i = _scheduledSources.indexOf(source)
+    if (i !== -1) _scheduledSources.splice(i, 1)
+  }
   source.start(startAt)
   playbackEndTime = startAt + decoded.duration
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
-export const runtime = "nodejs"
+export const runtime    = "nodejs"
+export const maxDuration = 60  // ElevenLabs cloning can take 20-40s for large audio files
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,7 +15,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing audio sample" }, { status: 400 })
     }
 
-    // Minimum viable quality check — ElevenLabs needs at least ~100 KB for a clean clone
     if (audio.size < 50_000) {
       return NextResponse.json({ error: "Audio sample too short" }, { status: 422 })
     }
@@ -24,22 +24,42 @@ export async function POST(req: NextRequest) {
     body.append("files", audio, "voice_sample.webm")
     body.append("description", "Instant Talk — auto voice clone")
 
-    const res = await fetch("https://api.elevenlabs.io/v1/voices/add", {
-      method: "POST",
-      headers: { "xi-api-key": apiKey },
-      body,
-    })
+    // 50s timeout — ElevenLabs cloning is slow for large samples; without a timeout
+    // the Vercel function hangs until the platform kills it, returning an opaque 502.
+    const controller = new AbortController()
+    const timeoutId  = setTimeout(() => controller.abort(), 50_000)
+
+    let res: Response
+    try {
+      res = await fetch("https://api.elevenlabs.io/v1/voices/add", {
+        method: "POST",
+        headers: { "xi-api-key": apiKey },
+        body,
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     if (!res.ok) {
       const err = await res.text().catch(() => "")
       console.error("[clone-voice]", res.status, err.slice(0, 200))
-      return NextResponse.json({ error: "ElevenLabs cloning failed", status: res.status }, { status: 502 })
+      // Return the real status so the client can distinguish quota (429) from server errors
+      const clientStatus = res.status === 429 ? 429 : 502
+      return NextResponse.json(
+        { error: "ElevenLabs cloning failed", upstream: res.status },
+        { status: clientStatus }
+      )
     }
 
     const data = await res.json()
     return NextResponse.json({ voiceId: data.voice_id })
   } catch (err) {
-    console.error("[clone-voice]", err)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
+    const isTimeout = err instanceof Error && err.name === "AbortError"
+    console.error("[clone-voice]", isTimeout ? "timeout after 50s" : err)
+    return NextResponse.json(
+      { error: isTimeout ? "Voice cloning timed out" : "Server error" },
+      { status: isTimeout ? 504 : 500 }
+    )
   }
 }

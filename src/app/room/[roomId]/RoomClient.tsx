@@ -62,6 +62,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const [joinError,       setJoinError]         = useState<string | null>(null)
   const [sessionEnded,    setSessionEnded]      = useState(false)
   const [transStep,       setTransStep]         = useState<string | null>(null)
+  const [audioBlocked,    setAudioBlocked]      = useState(false)
   const screenTrackRef   = useRef<ILocalVideoTrack | null>(null)
   const cloneVoiceIdRef  = useRef<string | null>(null)
   const cloneRecorderRef = useRef<MediaRecorder | null>(null)
@@ -73,6 +74,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const isInitializing = useRef(false)
   const subtitleRef    = useRef<SubtitleOverlayHandle | null>(null)
   const remoteUsersRef = useRef<IAgoraRTCRemoteUser[]>([])
+  // Tracks ALL remote participants (audio + video) — used for TTS gating.
+  // remoteUsers state only tracks video users; audio-only participants would falsely
+  // suppress TTS if we used remoteUsers.length as the gate condition.
+  const allParticipantsRef = useRef(new Set<string | number>())
   const restartSeq     = useRef(0)
   const agoraTokenRef  = useRef<string>("")
   const agoraUidRef    = useRef<number | null>(null)
@@ -106,13 +111,36 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   useEffect(() => { isTranslatingRef.current = isTranslating }, [isTranslating])
 
   // ── Mount-time SDK warmup ─────────────────────────────────────────────────────
-  // Initialise le moteur vocal au montage pour que le premier startTranslation()
-  // démarre immédiatement sans délai de chargement.
   useEffect(() => {
+    console.log("[RoomClient] v3 — speculative TTS off, allParticipants gate fixed")
     void getVE().then(ve => {
       ve.warmupSDK()
       ve.setTTSProvider("elevenlabs")
     })
+  }, [])
+
+  // ── Mobile AudioContext + Agora autoplay unlock ──────────────────────────────
+  // iOS/Android suspend AudioContext until a user gesture fires in the page context.
+  // Translation auto-starts on join (no gesture), so TTS is silently blocked until
+  // the user taps anything. Same issue applies to Agora's internal AudioContext.
+  useEffect(() => {
+    // Agora: handle autoplay failure (iOS blocks audio without user gesture)
+    AgoraRTC.onAudioAutoplayFailed = () => { setAudioBlocked(true) }
+
+    const unlock = () => {
+      setAudioBlocked(false)
+      void getVE().then(ve => {
+        ve.unlockAudioContextSync()
+        ve.warmAudioContext().catch(() => {})
+      })
+    }
+    document.addEventListener("click",      unlock, { passive: true })
+    document.addEventListener("touchstart", unlock, { passive: true })
+    return () => {
+      AgoraRTC.onAudioAutoplayFailed = undefined
+      document.removeEventListener("click",      unlock)
+      document.removeEventListener("touchstart", unlock)
+    }
   }, [])
 
   // ─── Cleanup ────────────────────────────────────────────────────────────────
@@ -248,6 +276,27 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     }
   }, [roomId, restoreAfterReconnect])
 
+  // ── Mobile reconnect on app resume (focus / pageshow) ────────────────────────
+  // On 4G mobile, switching apps or locking the screen kills the WebSocket.
+  // visibilitychange covers tab switches; focus + pageshow cover the back-navigation
+  // and app-switch scenarios specific to mobile browsers.
+  useEffect(() => {
+    const onResume = () => {
+      setTimeout(() => {
+        const c = clientRef.current
+        if (!c) return
+        if (c.connectionState === "DISCONNECTED") void rejoin(c)
+        else if (c.connectionState === "CONNECTED") void restoreAfterReconnect(c)
+      }, 800)
+    }
+    window.addEventListener("focus",    onResume)
+    window.addEventListener("pageshow", onResume)
+    return () => {
+      window.removeEventListener("focus",    onResume)
+      window.removeEventListener("pageshow", onResume)
+    }
+  }, [rejoin, restoreAfterReconnect])
+
   // ─── Agora init ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -368,6 +417,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         clientRef.current = client
 
         client.on("user-published", async (user, mediaType) => {
+          // Never subscribe to our own UID — can happen in reconnect edge-cases and would
+          // cause the local speaker to hear their own TTS translation.
+          if (user.uid === agoraUidRef.current) return
+          // Track ALL remote participants before any connection guard so getRemoteCount()
+          // is always > 0 when TTS fires, even during brief reconnect windows.
+          allParticipantsRef.current.add(user.uid)
+          console.log(`[Agora] user-published uid=${user.uid} type=${mediaType} allParticipants=${allParticipantsRef.current.size}`)
           if (client.connectionState !== "CONNECTED") return
           try { await client.subscribe(user, mediaType) } catch { return }
           if (mediaType === "video") {
@@ -380,12 +436,24 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             }
             requestAnimationFrame(go)
           }
-          if (mediaType === "audio") { try { user.audioTrack?.play() } catch {} }
+          if (mediaType === "audio") {
+            console.log(`[Agora] playing remote audio uid=${user.uid}`)
+            try {
+              user.audioTrack?.play()
+            } catch {
+              // iOS autoplay blocked — queue a retry on next user interaction
+              console.warn(`[Agora] audio autoplay blocked for uid=${user.uid}, retrying on next gesture`)
+              const retry = () => { try { user.audioTrack?.play() } catch {} }
+              document.addEventListener("touchstart", retry, { once: true, passive: true })
+              document.addEventListener("click",      retry, { once: true, passive: true })
+            }
+          }
         })
         client.on("user-unpublished", (user, mediaType) => {
           if (mediaType === "video") setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid))
         })
         client.on("user-left", (user) => {
+          allParticipantsRef.current.delete(user.uid)
           setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid))
         })
         client.on("connection-state-change", (cur, prev) => {
@@ -485,6 +553,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     return () => {
       cancelled = true
       isInitializing.current = false
+      allParticipantsRef.current.clear()
       void cleanup()
     }
   }, [roomId, cleanup, rejoin, restoreAfterReconnect])
@@ -564,19 +633,25 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   const publishInterpreter = useCallback(async () => {
     if (interpreterRef.current || !clientRef.current) return
+    let interpTrack: ReturnType<typeof AgoraRTC.createCustomAudioTrack> | null = null
     try {
       const ve     = await getVE()
       const stream = ve.getTTSMediaStream()
       const track  = stream.getAudioTracks()[0]
-      if (!track) return
-      // SDK Agora 4.24.3 : pas de restriction sur les tracks audio multiples.
-      // On publie le track TTS EN PLUS du mic — remote entend les deux simultanément.
-      // Le mic Agora reste publié et n'est jamais touché ici.
-      const interpTrack = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: track })
-      interpreterRef.current = interpTrack
+      console.log(`[Interpreter] TTS stream tracks:${stream.getAudioTracks().length} state:${track?.readyState} ctx:${ve.getTTSProvider()}`)
+      if (!track || track.readyState === "ended") {
+        console.error("[Interpreter] TTS audio track missing or ended — cannot publish")
+        return
+      }
+      interpTrack = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: track })
       await clientRef.current.publish(interpTrack)
+      // Only store after successful publish — prevents the guard from blocking retry on failure
+      interpreterRef.current = interpTrack
+      console.log("[Interpreter] TTS track published to Agora ✓")
     } catch (err) {
-      console.warn("[Interpreter]", err)
+      // Publish failed — close the track and leave interpreterRef null so startTrans can retry
+      console.warn("[Interpreter] publish failed:", err)
+      try { interpTrack?.close() } catch {}
     }
   }, [])
 
@@ -663,10 +738,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     if (_ve) _ve.setTTSProvider(next)
   }, [ttsProvider])
 
-  // ─── Voice cloning — silent 60s capture after room join ─────────────────────
+  // ─── Voice cloning — 20s capture after room join ────────────────────────────
+  // 20s of webm/opus ≈ 600–900 KB — small enough to upload and clone within
+  // the Vercel function timeout. 60s was causing 502s due to ElevenLabs processing
+  // time exceeding the function timeout even with maxDuration = 60.
 
   const startVoiceClone = useCallback(async () => {
-    // Only one clone session per room join; skip if already running or done
     if (cloneStatus !== "idle") return
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -688,7 +765,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         cloneRecorderRef.current = null
 
         const blob = new Blob(chunks, { type: mimeType })
-        if (blob.size < 50_000) { setCloneStatus("error"); return }
+        if (blob.size < 20_000) { setCloneStatus("error"); return }
 
         try {
           setCloneStatus("cloning")
@@ -709,13 +786,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       }
 
       setCloneStatus("recording")
-      recorder.start(1000) // collect chunks every 1s
+      recorder.start(1000)
       setTimeout(() => {
         if (recorder.state === "recording") recorder.stop()
-      }, 60_000)
+      }, 20_000)  // 20s — down from 60s
 
     } catch {
-      // getUserMedia denied or browser limitation — non-fatal
       setCloneStatus("idle")
     }
   }, [cloneStatus])
@@ -752,7 +828,9 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       },
       tgt,
       gender,
-      () => remoteUsersRef.current.length,
+      // Fallback: if allParticipantsRef hasn't been populated yet (race at join),
+      // use Agora's own remoteUsers list as ground truth.
+      () => Math.max(allParticipantsRef.current.size, clientRef.current?.remoteUsers.length ?? 0),
       null  // aucune restriction de langue
     )
   }, [publishInterpreter, showSubtitle])
@@ -853,6 +931,16 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   return (
     <div className="h-screen w-screen bg-black text-white flex flex-col overflow-hidden">
+
+      {/* Audio blocked banner — iOS/Android require a tap to enable audio */}
+      {audioBlocked && (
+        <div
+          className="shrink-0 text-center text-xs py-2 font-semibold tracking-wide bg-violet-700/90 text-violet-100 cursor-pointer"
+          onClick={() => setAudioBlocked(false)}
+        >
+          🔊 Appuyez ici pour activer l&apos;audio
+        </div>
+      )}
 
       {/* Network banner */}
       {netStatus !== "ok" && (
