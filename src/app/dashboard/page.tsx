@@ -43,7 +43,7 @@ const PILL = {
 
 export default function Dashboard() {
   const router = useRouter();
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
   const [joinId, setJoinId] = useState("");
   const [meetings, setMeetings] = useState<Meeting[]>([]);
 
@@ -86,33 +86,33 @@ export default function Dashboard() {
 
   const stats = [
     {
-      label: "Réunions actives",
+      label: t("dashboard.statsActive"),
       value: "0",
-      sub: "en ce moment",
+      sub: t("dashboard.statsActiveSub"),
       icon: Video,
       color: "#6366f1",
       glow: "rgba(99,102,241,0.25)",
     },
     {
-      label: "Prévues",
+      label: t("dashboard.statsUpcoming"),
       value: String(upcoming.length),
-      sub: "prochaines sessions",
+      sub: t("dashboard.statsUpcomingSub"),
       icon: Calendar,
       color: "#06b6d4",
       glow: "rgba(6,182,212,0.22)",
     },
     {
-      label: "Langues actives",
+      label: t("dashboard.statsLangs"),
       value: "26",
-      sub: "simultanément",
+      sub: t("dashboard.statsLangsSub"),
       icon: Globe,
       color: "#a855f7",
       glow: "rgba(168,85,247,0.22)",
     },
     {
-      label: "Latence IA",
+      label: t("dashboard.statsLatency"),
       value: "<400",
-      sub: "ms de traduction",
+      sub: t("dashboard.statsLatencySub"),
       icon: Zap,
       color: "#10b981",
       glow: "rgba(16,185,129,0.22)",
@@ -121,26 +121,26 @@ export default function Dashboard() {
 
   const quickActions = [
     {
-      title: "Réunion instantanée",
-      desc: "Lancez un appel vidéo multilingue en un clic. Voix naturelle, sous-titres IA, 26 langues.",
-      cta: "Démarrer maintenant",
+      title: t("dashboard.instantTitle"),
+      desc: t("dashboard.instantDesc"),
+      cta: t("dashboard.instantCta"),
       icon: Video,
       gradient: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)",
       glow: "rgba(99,102,241,0.4)",
       action: startMeeting,
     },
     {
-      title: "Programmer une réunion",
-      desc: "Créez un lien sécurisé, invitez vos participants et planifiez sur votre calendrier.",
-      cta: "Planifier",
+      title: t("dashboard.scheduleTitle"),
+      desc: t("dashboard.scheduleDesc"),
+      cta: t("dashboard.scheduleCta"),
       icon: Calendar,
       gradient: "linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)",
       glow: "rgba(6,182,212,0.35)",
       href: "/dashboard/meetings",
     },
     {
-      title: "Rejoindre une salle",
-      desc: "Entrez un code de réunion ou collez un lien d'invitation.",
+      title: t("dashboard.joinTitle"),
+      desc: t("dashboard.joinDesc"),
       cta: null,
       icon: Users,
       gradient: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)",
@@ -150,12 +150,12 @@ export default function Dashboard() {
   ];
 
   const features = [
-    { icon: Globe, label: "Traduction vocale IA", desc: "26 langues, <400 ms, voix naturelle", color: "#6366f1" },
-    { icon: Mic, label: "Transcription en direct", desc: "Sous-titres synchronisés en temps réel", color: "#06b6d4" },
-    { icon: Film, label: "Enregistrement cloud", desc: "Stockage sécurisé, partage en un clic", color: "#a855f7" },
-    { icon: Shield, label: "Chiffrement E2E", desc: "Conforme RGPD, infrastructure premium", color: "#10b981" },
-    { icon: TrendingUp, label: "Résumés IA", desc: "Récapitulatif structuré post-réunion", color: "#f59e0b" },
-    { icon: Star, label: "Expérience Premium", desc: "Interface 3D, latence ultra-faible", color: "#ec4899" },
+    { icon: Globe, label: t("dashboard.feat1Label"), desc: t("dashboard.feat1Desc"), color: "#6366f1" },
+    { icon: Mic, label: t("dashboard.feat2Label"), desc: t("dashboard.feat2Desc"), color: "#06b6d4" },
+    { icon: Film, label: t("dashboard.feat3Label"), desc: t("dashboard.feat3Desc"), color: "#a855f7" },
+    { icon: Shield, label: t("dashboard.feat4Label"), desc: t("dashboard.feat4Desc"), color: "#10b981" },
+    { icon: TrendingUp, label: t("dashboard.feat5Label"), desc: t("dashboard.feat5Desc"), color: "#f59e0b" },
+    { icon: Star, label: t("dashboard.feat6Label"), desc: t("dashboard.feat6Desc"), color: "#ec4899" },
   ];
 
   return (
@@ -288,7 +288,7 @@ export default function Dashboard() {
                   type="text"
                   value={joinId}
                   onChange={(e) => setJoinId(e.target.value)}
-                  placeholder="Code de réunion"
+                  placeholder={t("dashboard.joinPlaceholder")}
                   style={{
                     flex: 1,
                     height: "40px",
@@ -317,7 +317,7 @@ export default function Dashboard() {
                     opacity: joinId.trim() ? 1 : 0.5,
                   }}
                 >
-                  Rejoindre
+                  {t("dashboard.joinBtn")}
                 </button>
               </form>
             ) : a.href ? (
@@ -374,8 +374,8 @@ export default function Dashboard() {
         <div style={{ ...CARD }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: "18px", letterSpacing: "-0.02em" }}>Réunions à venir</div>
-              <div style={{ fontSize: "13px", opacity: 0.55, marginTop: "3px" }}>{upcoming.length} session(s) planifiée(s)</div>
+              <div style={{ fontWeight: 800, fontSize: "18px", letterSpacing: "-0.02em" }}>{t("dashboard.upcomingTitle")}</div>
+              <div style={{ fontSize: "13px", opacity: 0.55, marginTop: "3px" }}>{upcoming.length} {t("dashboard.upcomingCount")}</div>
             </div>
             <Link href="/dashboard/meetings" style={{ textDecoration: "none" }}>
               <div
@@ -386,7 +386,7 @@ export default function Dashboard() {
                   color: "#a5b4fc",
                 }}
               >
-                Tout voir <ArrowRight size={11} />
+                {t("dashboard.viewAll")} <ArrowRight size={11} />
               </div>
             </Link>
           </div>
@@ -401,10 +401,10 @@ export default function Dashboard() {
               }}
             >
               <Calendar size={32} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
-              Aucune réunion planifiée
+              {t("dashboard.noMeetings")}
               <br />
               <Link href="/dashboard/meetings" style={{ color: "#818cf8", textDecoration: "none", fontWeight: 700 }}>
-                Programmer maintenant →
+                {t("dashboard.scheduleNow")}
               </Link>
             </div>
           ) : (
@@ -440,7 +440,7 @@ export default function Dashboard() {
                       {new Date(m.startsAt).getDate()}
                     </div>
                     <div style={{ fontSize: "9px", opacity: 0.6, letterSpacing: "0.04em" }}>
-                      {new Date(m.startsAt).toLocaleDateString("fr-FR", { month: "short" }).toUpperCase()}
+                      {new Date(m.startsAt).toLocaleDateString(lang, { month: "short" }).toUpperCase()}
                     </div>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -457,7 +457,7 @@ export default function Dashboard() {
                     </div>
                     <div style={{ fontSize: "12px", opacity: 0.55, marginTop: "3px", display: "flex", alignItems: "center", gap: "5px" }}>
                       <Clock size={11} />
-                      {formatTime(m.startsAt)} · {m.invitees.length} invité(s)
+                      {formatTime(m.startsAt)} · {m.invitees.length} {t("dashboard.invitees")}
                     </div>
                   </div>
                   <a href={m.roomId ? `/room/${m.roomId}` : (m.joinLink ?? "#")} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
@@ -475,7 +475,7 @@ export default function Dashboard() {
                         flexShrink: 0,
                       }}
                     >
-                      Rejoindre
+                      {t("dashboard.joinMeeting")}
                     </div>
                   </a>
                 </div>
@@ -487,7 +487,7 @@ export default function Dashboard() {
         {/* Features grid */}
         <div style={{ ...CARD }}>
           <div style={{ fontWeight: 800, fontSize: "18px", letterSpacing: "-0.02em", marginBottom: "20px" }}>
-            Capacités de la plateforme
+            {t("dashboard.featuresTitle")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             {features.map((f) => (

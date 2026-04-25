@@ -247,7 +247,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
         </div>
         {isAnnual && (
           <p className="text-sm font-semibold text-emerald-600">
-            {t("pricing.annualSave")} · <span className="text-emerald-700">jusqu'à 240€/an</span>
+            {t("pricing.annualSave")} · <span className="text-emerald-700">{t("pricing.annualMaxSave")}</span>
           </p>
         )}
       </div>
@@ -273,7 +273,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
               {isCurrent && (
                 <div className="mb-3 flex justify-center">
                   <span className="rounded-full bg-emerald-500 px-5 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-lg shadow-emerald-500/30">
-                    {currentStatus === "trialing" ? "✓ Essai actif" : "✓ Plan actuel"}
+                    {currentStatus === "trialing" ? "✓ " + t("pricing.trialActive") : "✓ " + t("pricing.planActive")}
                   </span>
                 </div>
               )}
@@ -318,7 +318,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
                   {isAnnual && isNumeric && (
                     <p className="mt-1.5 text-sm text-slate-500">
                       {t("pricing.annualBilled").replace("{price}", String(Number(price) * 12))} ·{" "}
-                      <span className="font-semibold text-emerald-600">Économisez {plan.saveA}€</span>
+                      <span className="font-semibold text-emerald-600">{t("pricing.savePer").replace("{amount}", plan.saveA)}</span>
                     </p>
                   )}
                   <p className="mt-2 text-xs font-semibold text-[#635BFF]">{plan.trialLabel}</p>
@@ -346,7 +346,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
                       }`}
                     >
                       {isCurrent
-                        ? currentStatus === "trialing" ? "Essai actif ✓" : "Plan actuel ✓"
+                        ? currentStatus === "trialing" ? t("pricing.trialActive") : t("pricing.planActive")
                         : loading === plan.key ? t("pricing.aiLoading")
                         : plan.cta}
                     </button>
@@ -355,7 +355,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
 
                 {!isEnterprise && !isCurrent && (
                   <p className="mt-3 text-center text-[11px] text-slate-400">
-                    Sans engagement · Résiliable à tout moment
+                    {t("pricing.noCommitment")}
                   </p>
                 )}
 
@@ -375,7 +375,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
 
                 <div className="mt-8 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
                   <div className="text-xs text-slate-500">
-                    <span className="font-semibold text-[#0A2540]">Capacité :</span> {plan.limit}
+                    <span className="font-semibold text-[#0A2540]">{t("pricing.capacity")} :</span> {plan.limit}
                   </div>
                   <div className="text-xs text-slate-500">
                     {plan.support}
@@ -390,11 +390,11 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
       {/* ── Comparison table ── */}
       <section>
         <div className="mb-8 text-center">
-          <Pill>Comparaison détaillée</Pill>
+          <Pill>{t("pricing.cmpTitle")}</Pill>
           <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-[#0A2540]">
-            Fonctionnalités complètes par plan
+            {t("pricing.cmpSubtitle")}
           </h2>
-          <p className="mt-3 text-[#425466]">Comparez chaque fonctionnalité pour choisir la formule adaptée à votre usage.</p>
+          <p className="mt-3 text-[#425466]">{t("pricing.cmpSubDesc")}</p>
         </div>
 
         <div className="overflow-x-auto rounded-[24px] border border-slate-200 bg-white shadow-sm">
@@ -533,7 +533,7 @@ export default function PricingCards({ currentPlan = null, currentStatus = null 
                 href="/dashboard"
                 className="inline-flex items-center justify-center rounded-full bg-white px-8 py-4 text-base font-bold text-[#0A2540] shadow-xl transition hover:bg-slate-100"
               >
-                Accéder au dashboard →
+                {t("pricing.toDashboard")}
               </Link>
             ) : (
               <button
