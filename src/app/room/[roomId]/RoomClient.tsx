@@ -79,8 +79,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   // suppress TTS if we used remoteUsers.length as the gate condition.
   const allParticipantsRef = useRef(new Set<string | number>())
   const restartSeq     = useRef(0)
-  const agoraTokenRef  = useRef<string>("")
-  const agoraUidRef    = useRef<number | null>(null)
+  const agoraTokenRef   = useRef<string>("")
+  const agoraUidRef     = useRef<number | null>(null)
 
   // Tab-unique session ID — prevents two tabs sharing the same customerRef
   // from getting the same Agora UID and conflicting in the same channel.
@@ -100,7 +100,11 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const planCapsRef    = useRef<PlanCapabilities | null>(null)
   // Ref to latest startTrans — lets the join effect call it without TDZ / stale-closure issues
   // (startTrans is declared after the join useEffect due to dependency ordering in the file).
-  const startTransRef  = useRef<((src: string, tgt: string, gender: VoiceGender) => Promise<void>) | null>(null)
+  const startTransRef          = useRef<((src: string, tgt: string, gender: VoiceGender) => Promise<void>) | null>(null)
+  // Ref to publishInterpreter — used in restoreAfterReconnect which is defined before publishInterpreter.
+  const publishInterpreterRef  = useRef<(() => Promise<void>) | null>(null)
+  // Ref to latest showSubtitle — used inside the stream-message listener (registered before showSubtitle is defined).
+  const showSubtitleRef        = useRef<((lang: string, text: string, final: boolean) => void) | null>(null)
 
   // Keep a live ref to remote users for voiceEngine callback (no stale closure)
   useEffect(() => { remoteUsersRef.current = remoteUsers }, [remoteUsers])
@@ -204,7 +208,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   // rejoin. Agora's SDK does NOT re-inject the local video element after reconnect,
   // and may or may not re-fire user-published for remote users depending on version.
 
-  const restoreAfterReconnect = useCallback(async (client: IAgoraRTCClient) => {
+  const restoreAfterReconnect = useCallback(async (client: IAgoraRTCClient, skipInterpreter = false) => {
     // 1. Re-attach local video stream (srcObject binding lost during reconnect)
     if (tracksRef.current?.video && localVideoRef.current) {
       try {
@@ -243,6 +247,21 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       }
       requestAnimationFrame(go)
     }
+
+    // 5. Re-publish interpreter (TTS) track if translation is active.
+    //    After RECONNECTING → CONNECTED the underlying MediaStreamTrack is often ended
+    //    by the SDK. Close the dead track and let publishInterpreter create a fresh one.
+    //    skipInterpreter=true when rejoin() already handles this itself.
+    if (!skipInterpreter && isTranslatingRef.current) {
+      if (interpreterRef.current) {
+        try { await client.unpublish(interpreterRef.current) } catch {}
+        try { interpreterRef.current.close() } catch {}
+        interpreterRef.current = null
+      }
+      if (publishInterpreterRef.current) {
+        await publishInterpreterRef.current().catch(() => {})
+      }
+    }
   }, [])
 
   const rejoin = useCallback(async (client: IAgoraRTCClient) => {
@@ -263,13 +282,18 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         try { if (!tracksRef.current.video.enabled) await tracksRef.current.video.setEnabled(true) } catch {}
         await client.publish([tracksRef.current.audio, tracksRef.current.video])
       }
-      if (interpreterRef.current) {
-        try { if (!interpreterRef.current.enabled) await interpreterRef.current.setEnabled(true) } catch {}
-        await client.publish(interpreterRef.current)
+      // Recreate interpreter track on rejoin — old track is dead after full disconnect.
+      if (isTranslatingRef.current) {
+        if (interpreterRef.current) {
+          try { interpreterRef.current.close() } catch {}
+          interpreterRef.current = null
+        }
+        await publishInterpreterRef.current?.().catch(() => {})
       }
       setNetStatus("ok")
-      // Restore video display and remote subscriptions after manual rejoin
-      void restoreAfterReconnect(client)
+      // Restore video display and remote subscriptions after manual rejoin.
+      // Pass skipInterpreter=true since we just handled it above.
+      void restoreAfterReconnect(client, true)
     } catch (err) {
       console.error("[REJOIN]", err)
       setNetStatus("error")
@@ -482,6 +506,14 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           }
         })
         client.on("network-quality", () => { /* silent telemetry */ })
+        // Caption broadcast: receive translated text from the remote speaker's data stream
+        client.on("stream-message", (_uid, payload) => {
+          try {
+            const text = new TextDecoder().decode(payload)
+            const msg = JSON.parse(text) as { lang: string; text: string; final: boolean }
+            showSubtitleRef.current?.(msg.lang, msg.text, msg.final)
+          } catch {}
+        })
         client.on("token-privilege-will-expire", () => {
           void (async () => {
             try {
@@ -636,12 +668,20 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     let interpTrack: ReturnType<typeof AgoraRTC.createCustomAudioTrack> | null = null
     try {
       const ve     = await getVE()
-      const stream = ve.getTTSMediaStream()
-      const track  = stream.getAudioTracks()[0]
+      let stream = ve.getTTSMediaStream()
+      let track  = stream.getAudioTracks()[0]
       console.log(`[Interpreter] TTS stream tracks:${stream.getAudioTracks().length} state:${track?.readyState} ctx:${ve.getTTSProvider()}`)
       if (!track || track.readyState === "ended") {
-        console.error("[Interpreter] TTS audio track missing or ended — cannot publish")
-        return
+        // Track ended (e.g. after interpreter.close() on a previous session) — reset
+        // the AudioContext so getTTSMediaStream() creates a fresh live track.
+        console.warn("[Interpreter] TTS audio track ended — resetting AudioContext")
+        ve.closeAudioContext()
+        stream = ve.getTTSMediaStream()
+        track  = stream.getAudioTracks()[0]
+        if (!track || track.readyState === "ended") {
+          console.error("[Interpreter] Fresh TTS audio track still dead — cannot publish")
+          return
+        }
       }
       interpTrack = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: track })
       await clientRef.current.publish(interpTrack)
@@ -654,6 +694,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       try { interpTrack?.close() } catch {}
     }
   }, [])
+  publishInterpreterRef.current = publishInterpreter
 
   // ─── Subtitles ───────────────────────────────────────────────────────────────
 
@@ -670,6 +711,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       })
     }
   }, [])
+  showSubtitleRef.current = showSubtitle
 
   // ── Screen share ────────────────────────────────────────────────────────────
   const toggleScreenShare = useCallback(async () => {
@@ -812,9 +854,24 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     await ve.startTranslation(
       src, [tgt],
       {
-        // Affiche la source immédiatement (0 ms) ; la traduction remplace dès son arrivée.
-        onPartial:  (lang, text) => showSubtitle(lang, text, false),
-        onFinal:    (lang, text) => showSubtitle(lang, text, true),
+        // onPartial: show source speech locally as real-time STT feedback for the speaker.
+        // The speaker should NOT see the translation — only their own words as they speak.
+        onPartial: (_lang, text) => showSubtitle(src, text, false),
+        // onFinal: broadcast the TRANSLATED text to remote users via data stream.
+        // Do NOT display locally — the speaker must not see their own translation.
+        onFinal: (_lang, text) => {
+          if (clientRef.current?.connectionState === "CONNECTED") {
+            try {
+              const encoded = new TextEncoder().encode(JSON.stringify({ lang: tgt, text, final: true }))
+              // sendStreamMessage is on the concrete AgoraRTCClient class, not IAgoraRTCClient
+              ;(clientRef.current as unknown as { sendStreamMessage(m: Uint8Array): Promise<void> })
+                .sendStreamMessage(encoded)
+                .catch((err: unknown) => { console.warn("[DataStream] sendStreamMessage failed:", err) })
+            } catch (err) {
+              console.warn("[DataStream] encode error:", err)
+            }
+          }
+        },
         onFallback: () => setIsFallbackActive(true),
         onError:   (err) => {
           console.error("[VoiceEngine]", err)
@@ -850,6 +907,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         try { interpreterRef.current.close() } catch {}
         interpreterRef.current = null
       }
+      // Reset AudioContext so the next publishInterpreter gets a fresh live MediaStreamTrack.
+      // interpreter.close() ends the underlying MediaStreamTrack; without this reset,
+      // getTTSMediaStream() would return the same dead track on the next session.
+      ve.closeAudioContext()
       setIsTranslating(false)
       setTranslationError(null)
       setIsFallbackActive(false)

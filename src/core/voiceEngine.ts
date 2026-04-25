@@ -612,14 +612,9 @@ async function startWebSpeechFallback(
     wsr.onend = () => {
       if (!_wsrActive || _wsr !== wsr) return
       if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
-      const tryStart = (attempt: number) => {
-        try { wsr.start() } catch {
-          if (attempt < 5) setTimeout(() => {
-            if (_wsrActive && _wsr === wsr) tryStart(attempt + 1)
-          }, 200 * attempt)
-        }
-      }
-      tryStart(1)
+      // Create a fresh WSR instance — restarting the same object after no-speech/abort
+      // is unreliable on Chrome (InvalidStateError loops). A new instance is always clean.
+      createWSR()
     }
 
     // Micro Agora reste ouvert → pas besoin d'attendre la libération du hardware.
