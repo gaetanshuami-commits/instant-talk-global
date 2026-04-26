@@ -75,6 +75,7 @@ let ttsDestNode: MediaStreamAudioDestinationNode | null = null
 let playbackEndTime = 0
 let _micMixSource: MediaStreamAudioSourceNode | null = null
 let _ttsStateChangeListener: (() => void) | null = null
+let _keepaliveSrc: AudioBufferSourceNode | null = null
 
 export function getTTSMediaStream(): MediaStream {
   if (!ttsCtx || ttsCtx.state === "closed") {
@@ -92,8 +93,27 @@ export function getTTSMediaStream(): MediaStream {
       }
     }
     ttsCtx.addEventListener("statechange", _ttsStateChangeListener)
+    // Keep the MediaStreamTrack alive: Chrome ends a DestinationNode track when no
+    // audio source is connected. A looping 1-sample silent buffer at zero gain
+    // keeps the track in "live" state between TTS utterances.
+    _startKeepAlive()
   }
   return ttsDestNode!.stream
+}
+
+function _startKeepAlive(): void {
+  if (!ttsCtx || !ttsDestNode) return
+  if (_keepaliveSrc) { try { _keepaliveSrc.stop() } catch {} _keepaliveSrc = null }
+  const buf = ttsCtx.createBuffer(1, 1, ttsCtx.sampleRate)
+  const src = ttsCtx.createBufferSource()
+  src.buffer = buf
+  src.loop = true
+  const gain = ttsCtx.createGain()
+  gain.gain.value = 0
+  src.connect(gain)
+  gain.connect(ttsDestNode)
+  src.start()
+  _keepaliveSrc = src
 }
 
 /** Recreate the AudioContext if it has entered a terminal or suspended state.
@@ -571,7 +591,13 @@ async function startWebSpeechFallback(
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
 
         const now = Date.now()
-        if (transcript === lastFinalText && now - lastFinalAt < 3000) continue
+        if (now - lastFinalAt < 4000) {
+          if (transcript === lastFinalText) continue
+          // Catch WSR restart echoes: new result sometimes prepends the previous
+          // final to the current utterance (e.g. "prev. final. new utterance").
+          // Skip if the new transcript merely extends or duplicates the last final.
+          if (lastFinalText.length >= 8 && transcript.includes(lastFinalText)) continue
+        }
         lastFinalText = transcript
         lastFinalAt   = now
 
@@ -849,6 +875,7 @@ export function closeAudioContext(): void {
   _elAbort = null
   removeMicFromTTSMix()
   stopScheduledSources()
+  if (_keepaliveSrc) { try { _keepaliveSrc.stop() } catch {} _keepaliveSrc = null }
   if (ttsCtx) {
     if (_ttsStateChangeListener) {
       ttsCtx.removeEventListener("statechange", _ttsStateChangeListener)
