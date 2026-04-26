@@ -533,7 +533,7 @@ async function startWebSpeechFallback(
     wsr.lang            = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
     wsr.continuous      = true   // pas de gap de session entre phrases
     wsr.interimResults  = true   // partials immédiatement visibles
-    wsr.maxAlternatives = 3      // 3 alternatives → choisir le meilleur résultat
+    wsr.maxAlternatives = 1      // 1 seule alternative — result[0] a la confiance la plus haute
     _wsr = wsr
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -567,12 +567,7 @@ async function startWebSpeechFallback(
     wsr.onresult = async (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]
-        // Choisir la meilleure alternative parmi les 3 (la plus longue = la plus complète)
-        let transcript = result[0].transcript.trim()
-        for (let a = 1; a < result.length; a++) {
-          const alt = result[a]?.transcript?.trim() ?? ""
-          if (alt.length > transcript.length) transcript = alt
-        }
+        const transcript = (result[0]?.transcript ?? "").trim()
         if (!transcript) continue
 
         if (!result.isFinal) {

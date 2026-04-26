@@ -65,7 +65,7 @@ async function translateWithGemini(text: string, targetLang: string): Promise<st
     body: JSON.stringify({
       contents: [{
         parts: [{
-          text: `You are a professional simultaneous interpreter. Translate the following spoken text into ${langName}.\nRules:\n- Output ONLY the translated text, nothing else\n- Preserve the natural spoken tone and rhythm\n- Use standard vocabulary — avoid overly formal or literary style\n- If the text is already in ${langName}, output it unchanged\n- Do not add punctuation that wasn't implied\n\nText: ${text}`,
+          text: `You are a real-time simultaneous interpreter. Translate the following spoken phrase into ${langName}.\nRules:\n- Output ONLY the translated text, nothing else\n- Translate literally and exactly — preserve every word, do not paraphrase or summarize\n- Keep the same register (informal stays informal)\n- If the text is already in ${langName}, output it unchanged\n- Never add or remove words\n\nText: ${text}`,
         }],
       }],
       generationConfig: { maxOutputTokens: 500, temperature: 0 },
