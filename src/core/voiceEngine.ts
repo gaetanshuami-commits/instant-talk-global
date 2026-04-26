@@ -433,7 +433,10 @@ async function ensureToken(): Promise<void> {
 
 export async function warmupSDK(): Promise<void> {
   try {
-    getTTSMediaStream()
+    // AudioContext must NOT be created here — this runs during component mount, before
+    // any user gesture. getTTSMediaStream() is deferred to unlockAudioContextSync()
+    // (called synchronously inside the "Traduire" click handler).
+    //
     // Charge le SDK STT serveur uniquement sur les navigateurs sans Web Speech API
     // (iOS Safari). Chrome/Edge utilisent l'API native — pas de token requis.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

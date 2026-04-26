@@ -71,7 +71,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (dbAvailable && !subscription) {
-      return NextResponse.json({ error: "No active subscription found." }, { status: 403 })
+      if (cookiePlan) {
+        // Cookie confirms a valid session (trial, test, etc.) — DB row may be delayed.
+        // Fall through to cookie-based plan resolution instead of hard-rejecting.
+        dbAvailable = false
+      } else {
+        return NextResponse.json({ error: "No active subscription found." }, { status: 403 })
+      }
     }
 
     if (dbAvailable && subscription?.currentPeriodEnd && subscription.currentPeriodEnd < new Date()) {
