@@ -449,8 +449,8 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           allParticipantsRef.current.add(user.uid)
           console.log(`[Agora] user-published uid=${user.uid} type=${mediaType} allParticipants=${allParticipantsRef.current.size}`)
           if (client.connectionState !== "CONNECTED") return
-          try { await client.subscribe(user, mediaType) } catch { return }
           if (mediaType === "video") {
+            try { await client.subscribe(user, mediaType) } catch { return }
             try { client.setStreamFallbackOption(user.uid, 2 as Parameters<typeof client.setStreamFallbackOption>[1]) } catch {}
             setRemoteUsers(prev => prev.find(u => u.uid === user.uid) ? prev : [...prev, user])
             let n = 0
@@ -461,6 +461,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             requestAnimationFrame(go)
           }
           if (mediaType === "audio") {
+            try { await client.subscribe(user, mediaType) } catch { /* track may already be live on re-publish */ }
             console.log(`[Agora] playing remote audio uid=${user.uid}`)
             try {
               user.audioTrack?.play()
@@ -507,7 +508,9 @@ export default function RoomClient({ roomId }: { roomId: string }) {
         })
         client.on("network-quality", () => { /* silent telemetry */ })
         // Caption broadcast: receive translated text from the remote speaker's data stream
-        client.on("stream-message", (_uid, payload) => {
+        client.on("stream-message", (uid, payload) => {
+          // Ignore messages we sent ourselves — Agora may echo them back on some SDK versions.
+          if (uid === agoraUidRef.current) return
           try {
             const text = new TextDecoder().decode(payload)
             const msg = JSON.parse(text) as { lang: string; text: string; final: boolean }
@@ -856,7 +859,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       {
         // onPartial: show source speech locally as real-time STT feedback for the speaker.
         // The speaker should NOT see the translation — only their own words as they speak.
-        onPartial: (_lang, text) => showSubtitle(src, text, false),
+        onPartial: (lang, text) => showSubtitle(lang, text, false),
         // onFinal: broadcast the TRANSLATED text to remote users via data stream.
         // Do NOT display locally — the speaker must not see their own translation.
         onFinal: (_lang, text) => {
@@ -1320,6 +1323,9 @@ const SubtitleOverlay = forwardRef<SubtitleOverlayHandle, object>(
 
         // Clear the auto-hide timer unconditionally.
         if (timer.current) { clearTimeout(timer.current); timer.current = null }
+
+        // RTL support for Arabic (and any other RTL language added later).
+        boxRef.current.dir = lang === "ar" ? "rtl" : "ltr"
 
         // Update text only when it actually changed — avoids the visual "doublon"
         // that occurs when Azure fires recognizing+recognized with identical text.

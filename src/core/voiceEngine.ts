@@ -78,7 +78,13 @@ let _ttsStateChangeListener: (() => void) | null = null
 
 export function getTTSMediaStream(): MediaStream {
   if (!ttsCtx || ttsCtx.state === "closed") {
-    ttsCtx = new AudioContext({ sampleRate: 48000 })
+    // sampleRate 48000 matches Agora's expected PCM rate; fallback for mobile browsers
+    // that reject a non-default sampleRate (e.g. some Android WebViews).
+    try {
+      ttsCtx = new AudioContext({ sampleRate: 48000 })
+    } catch {
+      ttsCtx = new AudioContext()
+    }
     ttsDestNode = ttsCtx.createMediaStreamDestination()
     _ttsStateChangeListener = () => {
       if (ttsCtx?.state === "suspended") {
@@ -548,7 +554,9 @@ async function startWebSpeechFallback(
           const isRestartEcho = transcript === lastFinalText
             && (Date.now() - lastFinalAt) < 2000
           if (!isRestartEcho) {
-            for (const lang of targets) callbacks.onPartial(lang, transcript)
+            // Always pass source lang + source text — speaker sees their own words,
+            // not the translation, as partial STT feedback.
+            callbacks.onPartial(sourceLang, transcript)
           }
           // Debounce 80ms (réduit depuis 150ms) → pré-chargement + TTS spéculatif plus tôt
           if (debounceTimer) clearTimeout(debounceTimer)
@@ -723,15 +731,14 @@ export async function startTranslation(
   const r = recognizer
 
   // ── recognizing: sous-titre partiel immédiat ────────────────────────────────
+  // Pass the partial SOURCE text (not translated) so the speaker sees their own
+  // words as real-time STT feedback, not the translation.
   r.recognizing = (
     _s: unknown,
-    e: { result: { translations: { get: (l: string) => string } } }
+    e: { result: { text?: string; translations: { get: (l: string) => string } } }
   ) => {
-    if (!e.result.translations) return
-    for (const lang of azureTargets) {
-      const text = e.result.translations.get(toAzureTarget(lang))
-      if (text) callbacks.onPartial(lang, text)
-    }
+    const partialSrc = e.result.text ?? ""
+    if (partialSrc) callbacks.onPartial(sourceLang, partialSrc)
   }
 
   // ── recognized: sous-titre final + TTS ────────────────────────────────────
@@ -932,10 +939,20 @@ async function drainTTSQueue(): Promise<void> {
     while (_ttsQueue.length > 0) {
       const job = _ttsQueue.shift()!
       cancelActiveSynth()
-      await speakWithElevenLabs(job.text, job.lang)
+      if (_ttsProvider === "azure") {
+        // Compute voice map from current gender at dispatch time — not at enqueue time —
+        // so gender changes (setTTSGender) take effect immediately for Azure.
+        const vMap = _ttsGenderGlobal === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+        await speakWithAzure(job.text, job.lang, vMap)
+      } else {
+        await speakWithElevenLabs(job.text, job.lang)
+      }
     }
   } finally {
     _ttsRunning = false
+    // If items were added while we were exiting (race between drain-end and enqueueTTS),
+    // restart to avoid a stuck queue.
+    if (_ttsQueue.length > 0) void drainTTSQueue().catch(() => {})
   }
 }
 
