@@ -521,10 +521,12 @@ async function startWebSpeechFallback(
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
   _wsrActive = true
 
-  // Timestamp du dernier résultat final — protection anti-replay sur 2s
-  // sans bloquer les phrases identiques prononcées légitimement plus tard.
   let lastFinalText = ""
   let lastFinalAt   = 0
+  // Exponential backoff on repeated network errors — prevents tight restart loops
+  // when Chrome can't reach the speech recognition service (e.g. poor connectivity).
+  // Resets to 300ms after any successful recognition.
+  let wsrRestartDelay = 300
 
   function createWSR() {
     const wsr = new SR()
@@ -603,6 +605,7 @@ async function startWebSpeechFallback(
         }
         lastFinalText = transcript
         lastFinalAt   = now
+        wsrRestartDelay = 300  // successful recognition — reset backoff
 
         // Traduction : cache pré-chargé (0ms) ou fetch immédiat
         let batchTranslations: Record<string, string>
@@ -643,7 +646,11 @@ async function startWebSpeechFallback(
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         callbacks.onError?.("Microphone permission denied.")
       }
-      // no-speech, aborted, network → non-fatals, onend relance
+      if (event.error === "network") {
+        // Back off: 300 → 600 → 1200 → 2400 → 4800 → 8000ms cap
+        wsrRestartDelay = Math.min(wsrRestartDelay * 2, 8000)
+        console.warn(`[WSR] network error — next restart in ${wsrRestartDelay}ms`)
+      }
     }
 
     wsr.onend = () => {
@@ -654,13 +661,12 @@ async function startWebSpeechFallback(
       createWSR()
     }
 
-    // Micro Agora reste ouvert → pas besoin d'attendre la libération du hardware.
-    // Démarrage immédiat de la reconnaissance vocale.
+    const startDelay = wsrRestartDelay
     setTimeout(() => {
       if (_wsrActive && _wsr === wsr) {
         try { wsr.start() } catch { /* onend gérera */ }
       }
-    }, 50)
+    }, startDelay)
   }
 
   createWSR()
