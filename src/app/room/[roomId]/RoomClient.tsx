@@ -72,7 +72,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const localVideoRef  = useRef<HTMLVideoElement | null>(null)
   const interpreterRef = useRef<ILocalAudioTrack | null>(null)
   const isInitializing = useRef(false)
-  const subtitleRef    = useRef<SubtitleOverlayHandle | null>(null)
+  const subtitleRefs   = useRef(new Map<number|string, SubtitleOverlayHandle>())
   const remoteUsersRef = useRef<IAgoraRTCRemoteUser[]>([])
   // Tracks ALL remote participants (audio + video) — used for TTS gating.
   // remoteUsers state only tracks video users; audio-only participants would falsely
@@ -103,8 +103,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const startTransRef          = useRef<((src: string, tgt: string, gender: VoiceGender) => Promise<void>) | null>(null)
   // Ref to publishInterpreter — used in restoreAfterReconnect which is defined before publishInterpreter.
   const publishInterpreterRef  = useRef<(() => Promise<void>) | null>(null)
-  // Ref to latest showSubtitle — used inside the stream-message listener (registered before showSubtitle is defined).
-  const showSubtitleRef        = useRef<((lang: string, text: string, final: boolean) => void) | null>(null)
 
   // Keep a live ref to remote users for voiceEngine callback (no stale closure)
   useEffect(() => { remoteUsersRef.current = remoteUsers }, [remoteUsers])
@@ -512,9 +510,16 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           // Ignore messages we sent ourselves — Agora may echo them back on some SDK versions.
           if (uid === agoraUidRef.current) return
           try {
-            const text = new TextDecoder().decode(payload)
-            const msg = JSON.parse(text) as { lang: string; text: string; final: boolean }
-            showSubtitleRef.current?.(msg.lang, msg.text, msg.final)
+            const msg = JSON.parse(new TextDecoder().decode(payload)) as { lang: string; text: string; final: boolean }
+            // Route translation into the sender's tile — the listener sees it inside the speaker's frame
+            subtitleRefs.current.get(uid)?.show(msg.lang, msg.text, msg.final)
+            if (msg.final) {
+              setTranscript(prev => {
+                const entry = `[${msg.lang.toUpperCase()}] ${msg.text}`
+                if (prev.length > 0 && prev[prev.length - 1] === entry) return prev
+                return [...prev, entry].slice(-120)
+              })
+            }
           } catch {}
         })
         client.on("token-privilege-will-expire", () => {
@@ -701,20 +706,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   // ─── Subtitles ───────────────────────────────────────────────────────────────
 
-  // Subtitle updates are pushed imperatively to SubtitleOverlay so that
-  // partial results (every ~300 ms) don't re-render the video grid at all.
-  const showSubtitle = useCallback((lang: string, text: string, final: boolean) => {
-    subtitleRef.current?.show(lang, text, final)
-    if (final) {
-      // Dédup : ne pas ajouter si identique à la dernière entrée pour cette langue
-      setTranscript(prev => {
-        const entry = `[${lang.toUpperCase()}] ${text}`
-        if (prev.length > 0 && prev[prev.length - 1] === entry) return prev
-        return [...prev, entry].slice(-120)
-      })
-    }
-  }, [])
-  showSubtitleRef.current = showSubtitle
 
   // ── Screen share ────────────────────────────────────────────────────────────
   const toggleScreenShare = useCallback(async () => {
@@ -857,11 +848,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     await ve.startTranslation(
       src, [tgt],
       {
-        // onPartial: show source speech locally as real-time STT feedback for the speaker.
-        // The speaker should NOT see the translation — only their own words as they speak.
-        onPartial: (lang, text) => showSubtitle(lang, text, false),
-        // onFinal: broadcast the TRANSLATED text to remote users via data stream.
-        // Do NOT display locally — the speaker must not see their own translation.
+        // onPartial: speaker never sees their own speech — no local subtitle feedback.
+        onPartial: () => {},
+        // onFinal: broadcast the TRANSLATED text to remote users via data stream only.
+        // The speaker sees nothing; the listener receives it via stream-message.
         onFinal: (_lang, text) => {
           if (clientRef.current?.connectionState === "CONNECTED") {
             try {
@@ -881,7 +871,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           const isFatal = /authentication error|401|403|unauthorized|non disponible|not available/i.test(err)
           if (isFatal) {
             setIsTranslating(false)
-            subtitleRef.current?.reset()
+            subtitleRefs.current.forEach(o => o.reset())
             setTranslationError("Reconnaissance vocale non disponible. Utilisez Chrome ou Edge.")
           }
         },
@@ -893,7 +883,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       () => Math.max(allParticipantsRef.current.size, clientRef.current?.remoteUsers.length ?? 0),
       null  // aucune restriction de langue
     )
-  }, [publishInterpreter, showSubtitle])
+  }, [publishInterpreter])
   // Keep ref current — allows the join useEffect to call startTrans without TDZ issue
   startTransRef.current = startTrans
 
@@ -917,7 +907,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
       setIsTranslating(false)
       setTranslationError(null)
       setIsFallbackActive(false)
-      subtitleRef.current?.reset()
+      subtitleRefs.current.forEach(o => o.reset())
       return
     }
     try {
@@ -1074,6 +1064,13 @@ export default function RoomClient({ roomId }: { roomId: string }) {
               className="video-tile relative bg-[#111] rounded-2xl overflow-hidden border border-white/8 min-h-0"
             >
               <div id={`rv-${user.uid}`} className="absolute inset-0" />
+              {/* Translation subtitle — appears inside this participant's tile for the listener */}
+              <SubtitleOverlay
+                ref={el => {
+                  if (el) subtitleRefs.current.set(user.uid, el)
+                  else subtitleRefs.current.delete(user.uid)
+                }}
+              />
               {/* Name tag */}
               <div className="absolute bottom-0 left-0 right-0 z-10 px-3 py-2" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)" }}>
                 <span className="text-xs font-bold text-white/90">Participant</span>
@@ -1082,9 +1079,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
             </div>
           ))}
         </div>
-
-        {/* Subtitles — isolated component; updates don't re-render the video grid */}
-        <SubtitleOverlay ref={subtitleRef} />
 
         {/* AI Companion panel */}
         {showAICompanion && (
@@ -1364,7 +1358,7 @@ const SubtitleOverlay = forwardRef<SubtitleOverlayHandle, object>(
     return (
       <div
         ref={wrapRef}
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[80%] text-center pointer-events-none z-20"
+        className="absolute bottom-12 left-1/2 -translate-x-1/2 max-w-[90%] text-center pointer-events-none z-20"
         style={{ display: "none" }}
       >
         <div ref={boxRef}>
