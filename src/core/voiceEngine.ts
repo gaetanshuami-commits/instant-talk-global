@@ -433,18 +433,12 @@ async function ensureToken(): Promise<void> {
 
 export async function warmupSDK(): Promise<void> {
   try {
-    // AudioContext must NOT be created here — this runs during component mount, before
-    // any user gesture. getTTSMediaStream() is deferred to unlockAudioContextSync()
-    // (called synchronously inside the "Traduire" click handler).
-    //
-    // Charge le SDK STT serveur uniquement sur les navigateurs sans Web Speech API
-    // (iOS Safari). Chrome/Edge utilisent l'API native — pas de token requis.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasSR = typeof window !== "undefined" && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
-    if (!hasSR) {
-      if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
-      await ensureToken()
-    }
+    // AudioContext must NOT be created here — runs during mount, before user gesture.
+    // Pre-load Azure SDK + token on all browsers: Azure is now the primary STT engine
+    // (neural recognition, much more accurate than WSR). Pre-loading eliminates the
+    // cold-start delay when the user first clicks "Traduire".
+    if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
+    await ensureToken()
   } catch {
     // Non-fatal — retried in startTranslation if needed
   }
@@ -710,19 +704,13 @@ export async function startTranslation(
   _ttsGenderGlobal = voiceGender
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
 
-  // ── Primaire : Web Speech API (Chrome, Edge, Android, Samsung Browser) ──────
-  // Reconnaissance vocale native du navigateur — aucune clé API requise, premiers
-  // résultats partiels en <50 ms. Traductions via /api/translate (DeepL + Gemini)
-  // en batch parallèle : toutes les 26 langues en ~150–400 ms depuis la fin de parole.
+  // ── Primaire : Azure Neural STT (tous navigateurs) ───────────────────────────
+  // Reconnaissance neuronale Azure — précision nettement supérieure au WSR natif
+  // du navigateur. STT + traduction intégrés en un seul appel (pas de /api/translate
+  // séparé). Si Azure est indisponible (quota, clé, réseau), bascule sur WSR.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR = typeof window !== "undefined" && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
-  if (SR) {
-    _fallbackMode = false
-    await startWebSpeechFallback(sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount)
-    return
-  }
 
-  // ── Secondaire : STT serveur (iOS Safari — Web Speech indisponible) ─────────
   let sdk: SDK
   try {
     if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
@@ -730,6 +718,12 @@ export async function startTranslation(
     await ensureToken()
     _fallbackMode = false
   } catch {
+    // Azure indisponible — basculer sur WSR si disponible (Chrome/Edge)
+    if (SR) {
+      _fallbackMode = true
+      await startWebSpeechFallback(sourceLang, targets, callbacks, ttsLang, voiceGender, getRemoteCount)
+      return
+    }
     callbacks.onError?.(
       "Reconnaissance vocale non disponible. Utilisez Chrome ou Edge pour la meilleure expérience."
     )
@@ -742,10 +736,9 @@ export async function startTranslation(
   speechConfig.speechRecognitionLanguage = SOURCE_LOCALE[sourceLang] ?? "fr-FR"
 
   // ── Latency ────────────────────────────────────────────────────────────────
-  // 300 ms end-silence: 150 ms was too aggressive — natural speech pauses (200-500 ms)
-  // were causing premature phrase cuts and flooding the pipeline with no-speech events.
+  // 200 ms end-silence: fast enough for live interpretation without cutting phrases prematurely.
   speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "300"
+    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "200"
   )
   speechConfig.setProperty(
     sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "30000"
