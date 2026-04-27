@@ -738,7 +738,7 @@ export async function startTranslation(
   // ── Latency ────────────────────────────────────────────────────────────────
   // 200 ms end-silence: fast enough for live interpretation without cutting phrases prematurely.
   speechConfig.setProperty(
-    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "200"
+    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "80"
   )
   speechConfig.setProperty(
     sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "30000"
