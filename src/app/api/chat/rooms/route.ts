@@ -7,29 +7,26 @@ export const runtime = "nodejs"
 function ref(req: NextRequest) { return req.cookies.get("instanttalk_customer_ref")?.value || null }
 
 async function ensureChatSchema() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS "ChatRoom" (
-      id          TEXT PRIMARY KEY,
-      "customerRef" TEXT NOT NULL,
-      name        TEXT NOT NULL,
-      emoji       TEXT,
-      color       TEXT NOT NULL DEFAULT '#6366f1',
-      "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS "ChatRoom_customerRef_idx" ON "ChatRoom"("customerRef");
-
-    CREATE TABLE IF NOT EXISTS "ChatMessage" (
-      id        TEXT PRIMARY KEY,
-      "roomId"  TEXT NOT NULL REFERENCES "ChatRoom"(id) ON DELETE CASCADE,
-      author    TEXT NOT NULL,
-      text      TEXT NOT NULL,
-      lang      TEXT,
-      mine      BOOLEAN NOT NULL DEFAULT FALSE,
-      "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS "ChatMessage_roomId_idx" ON "ChatMessage"("roomId");
-    CREATE INDEX IF NOT EXISTS "ChatMessage_createdAt_idx" ON "ChatMessage"("createdAt");
-  `)
+  await pool.query(`CREATE TABLE IF NOT EXISTS "ChatRoom" (
+    id          TEXT PRIMARY KEY,
+    "customerRef" TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    emoji       TEXT,
+    color       TEXT NOT NULL DEFAULT '#6366f1',
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS "ChatRoom_customerRef_idx" ON "ChatRoom"("customerRef")`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS "ChatMessage" (
+    id          TEXT PRIMARY KEY,
+    "roomId"    TEXT NOT NULL REFERENCES "ChatRoom"(id) ON DELETE CASCADE,
+    author      TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    lang        TEXT,
+    mine        BOOLEAN NOT NULL DEFAULT FALSE,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS "ChatMessage_roomId_idx" ON "ChatMessage"("roomId")`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS "ChatMessage_createdAt_idx" ON "ChatMessage"("createdAt")`)
 }
 
 export async function GET(req: NextRequest) {
@@ -38,20 +35,27 @@ export async function GET(req: NextRequest) {
   try {
     await ensureChatSchema()
     const { rows } = await pool.query(
-      `SELECT r.id, r.name, r.color, r.emoji, r."createdAt",
-         COALESCE(
-           json_agg(m ORDER BY m."createdAt" DESC) FILTER (WHERE m.id IS NOT NULL),
-           '[]'
-         ) AS messages
+      `SELECT
+         r.id, r.name, r.color, r."createdAt",
+         (SELECT text        FROM "ChatMessage" WHERE "roomId"=r.id ORDER BY "createdAt" DESC LIMIT 1) AS "lastText",
+         (SELECT "createdAt" FROM "ChatMessage" WHERE "roomId"=r.id ORDER BY "createdAt" DESC LIMIT 1) AS "lastAt"
        FROM "ChatRoom" r
-       LEFT JOIN LATERAL (
-         SELECT * FROM "ChatMessage" WHERE "roomId"=r.id ORDER BY "createdAt" DESC LIMIT 1
-       ) m ON TRUE
        WHERE r."customerRef"=$1
-       GROUP BY r.id
-       ORDER BY r."createdAt" ASC`, [customerRef])
-    return NextResponse.json({ rooms: rows })
-  } catch { return NextResponse.json({ rooms: [] }) }
+       ORDER BY r."createdAt" ASC`,
+      [customerRef]
+    )
+    const rooms = rows.map(r => ({
+      id:       r.id,
+      name:     r.name,
+      color:    r.color,
+      createdAt: r.createdAt,
+      messages: r.lastText ? [{ text: r.lastText, createdAt: r.lastAt }] : [],
+    }))
+    return NextResponse.json({ rooms })
+  } catch (err) {
+    console.error("[chat/rooms GET]", err)
+    return NextResponse.json({ rooms: [] })
+  }
 }
 
 export async function POST(req: NextRequest) {
