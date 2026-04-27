@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Plus, X, Loader2, MessageSquare } from "lucide-react";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 const CARD = {
   borderRadius: "22px",
@@ -21,6 +22,7 @@ function formatTime(d: string) {
 }
 
 export default function ChatPage() {
+  const { t } = useLanguage();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -30,15 +32,23 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [showNewRoom, setShowNewRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [creating, setCreating] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadRooms = async () => {
-    const r = await fetch("/api/chat/rooms");
-    if (r.ok) {
-      const d = await r.json();
-      setRooms(d.rooms);
-      if (!activeRoomId && d.rooms.length > 0) setActiveRoomId(d.rooms[0].id);
+    try {
+      const r = await fetch("/api/chat/rooms");
+      if (r.ok) {
+        const d = await r.json();
+        setRooms(d.rooms ?? []);
+        if (!activeRoomId && d.rooms?.length > 0) setActiveRoomId(d.rooms[0].id);
+      } else {
+        setRooms([]);
+      }
+    } catch {
+      setRooms([]);
     }
     setLoadingRooms(false);
   };
@@ -47,7 +57,7 @@ export default function ChatPage() {
     setLoadingMsgs(true);
     try {
       const r = await fetch(`/api/chat/rooms/${roomId}/messages`);
-      if (r.ok) setMessages((await r.json()).messages);
+      if (r.ok) setMessages((await r.json()).messages ?? []);
     } finally { setLoadingMsgs(false); }
   }, []);
 
@@ -56,7 +66,6 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeRoomId) return;
     loadMessages(activeRoomId);
-    // Poll every 3s for new messages
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => loadMessages(activeRoomId), 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -72,7 +81,6 @@ export default function ChatPage() {
     setSending(true);
     const text = input.trim();
     setInput("");
-    // Optimistic update
     const tmp: Message = { id: `tmp-${Date.now()}`, author: "Moi", text, mine: true, createdAt: new Date().toISOString() };
     setMessages(prev => [...prev, tmp]);
     try {
@@ -87,18 +95,33 @@ export default function ChatPage() {
   const createRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomName.trim()) return;
-    const color = COLORS[rooms.length % COLORS.length];
-    const r = await fetch("/api/chat/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newRoomName, color }),
-    });
-    if (r.ok) {
-      const d = await r.json();
-      await loadRooms();
-      setActiveRoomId(d.room.id);
-      setShowNewRoom(false);
-      setNewRoomName("");
+    setCreateError("");
+    setCreating(true);
+    try {
+      const color = COLORS[rooms.length % COLORS.length];
+      const r = await fetch("/api/chat/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newRoomName.trim(), color }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        await loadRooms();
+        setActiveRoomId(d.room.id);
+        setShowNewRoom(false);
+        setNewRoomName("");
+      } else {
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          setCreateError(t("dash.chatErrUnauth"));
+        } else {
+          setCreateError(d.error === "name required" ? t("dash.channelName") : t("dash.chatErrCreate"));
+        }
+      }
+    } catch {
+      setCreateError(t("dash.chatErrCreate"));
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -110,8 +133,8 @@ export default function ChatPage() {
       <div style={{ ...CARD, width: "280px", flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontWeight: 800, fontSize: "15px" }}>Messagerie</div>
-            <button onClick={() => setShowNewRoom(true)} style={{ width: 28, height: 28, borderRadius: "8px", border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.1)", color: "#a5b4fc", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: "15px" }}>{t("dash.chatTitle")}</div>
+            <button onClick={() => { setShowNewRoom(true); setCreateError(""); }} style={{ width: 28, height: 28, borderRadius: "8px", border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.1)", color: "#a5b4fc", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Plus size={14} />
             </button>
           </div>
@@ -121,7 +144,7 @@ export default function ChatPage() {
             <div style={{ display: "flex", justifyContent: "center", padding: "20px", opacity: 0.4 }}><Loader2 size={20} /></div>
           ) : rooms.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 16px", opacity: 0.45, fontSize: "13px" }}>
-              Aucune conversation.<br />Cliquez sur + pour en créer une.
+              {t("dash.noConvo")}<br />{t("dash.noConvoSub")}
             </div>
           ) : rooms.map(room => (
             <button
@@ -135,7 +158,7 @@ export default function ChatPage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: "13.5px", color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{room.name}</div>
                 <div style={{ fontSize: "11px", opacity: 0.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
-                  {room.messages[0]?.text ?? "Aucun message"}
+                  {room.messages[0]?.text ?? t("dash.noMessage")}
                 </div>
               </div>
             </button>
@@ -148,7 +171,7 @@ export default function ChatPage() {
         {!activeRoom ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.4, flexDirection: "column", gap: "12px" }}>
             <MessageSquare size={40} strokeWidth={1.2} />
-            <div style={{ fontSize: "15px", fontWeight: 600 }}>Sélectionnez ou créez une conversation</div>
+            <div style={{ fontSize: "15px", fontWeight: 600 }}>{t("dash.selectOrCreate")}</div>
           </div>
         ) : (
           <>
@@ -159,7 +182,7 @@ export default function ChatPage() {
               </div>
               <div>
                 <div style={{ fontWeight: 800, fontSize: "15px" }}>{activeRoom.name}</div>
-                <div style={{ fontSize: "11px", opacity: 0.45 }}>Traduction instantanée activée</div>
+                <div style={{ fontSize: "11px", opacity: 0.45 }}>{t("dash.translationActive")}</div>
               </div>
             </div>
 
@@ -168,7 +191,7 @@ export default function ChatPage() {
               {loadingMsgs && messages.length === 0 ? (
                 <div style={{ display: "flex", justifyContent: "center", opacity: 0.4 }}><Loader2 size={20} /></div>
               ) : messages.length === 0 ? (
-                <div style={{ textAlign: "center", opacity: 0.4, fontSize: "14px", marginTop: "40px" }}>Aucun message. Démarrez la conversation.</div>
+                <div style={{ textAlign: "center", opacity: 0.4, fontSize: "14px", marginTop: "40px" }}>{t("dash.noMessages")}</div>
               ) : messages.map((msg) => (
                 <div key={msg.id} style={{ display: "flex", justifyContent: msg.mine ? "flex-end" : "flex-start" }}>
                   <div style={{ maxWidth: "70%" }}>
@@ -192,7 +215,7 @@ export default function ChatPage() {
               <input
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                placeholder="Votre message..."
+                placeholder={t("dash.msgPlaceholder")}
                 style={{ flex: 1, height: "44px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", padding: "0 14px", fontSize: "14px", outline: "none" }}
               />
               <button type="submit" disabled={!input.trim() || sending} style={{ width: 44, height: 44, borderRadius: "12px", border: 0, background: "linear-gradient(135deg, #6366f1, #7c3aed)", color: "white", cursor: input.trim() ? "pointer" : "not-allowed", opacity: input.trim() ? 1 : 0.5, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(99,102,241,0.4)" }}>
@@ -208,16 +231,31 @@ export default function ChatPage() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
           <div style={{ ...CARD, width: "100%", maxWidth: "380px", margin: "0 20px", padding: "28px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
-              <h2 style={{ margin: 0, fontWeight: 800, fontSize: "20px" }}>Nouvelle conversation</h2>
-              <button onClick={() => setShowNewRoom(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}><X size={18} /></button>
+              <h2 style={{ margin: 0, fontWeight: 800, fontSize: "20px" }}>{t("dash.newConvo")}</h2>
+              <button onClick={() => { setShowNewRoom(false); setCreateError(""); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}><X size={18} /></button>
             </div>
             <form onSubmit={createRoom} style={{ display: "grid", gap: "12px" }}>
               <div>
-                <div style={{ fontSize: "12px", opacity: 0.6, marginBottom: "5px", fontWeight: 600 }}>Nom du canal *</div>
-                <input required value={newRoomName} onChange={e => setNewRoomName(e.target.value)} placeholder="ex: Equipe Marketing" style={{ width: "100%", height: "40px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", padding: "0 12px", fontSize: "13.5px", outline: "none", boxSizing: "border-box" }} />
+                <div style={{ fontSize: "12px", opacity: 0.6, marginBottom: "5px", fontWeight: 600 }}>{t("dash.channelName")}</div>
+                <input
+                  required
+                  value={newRoomName}
+                  onChange={e => { setNewRoomName(e.target.value); setCreateError(""); }}
+                  placeholder={t("dash.channelPlaceholder")}
+                  style={{ width: "100%", height: "40px", borderRadius: "10px", border: `1px solid ${createError ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.1)"}`, background: "rgba(255,255,255,0.06)", color: "white", padding: "0 12px", fontSize: "13.5px", outline: "none", boxSizing: "border-box" }}
+                />
               </div>
-              <button type="submit" style={{ height: "42px", borderRadius: "11px", border: 0, background: "linear-gradient(135deg, #6366f1, #7c3aed)", color: "white", fontWeight: 700, fontSize: "14px", cursor: "pointer", marginTop: "4px" }}>
-                Créer
+              {createError && (
+                <div style={{ fontSize: "12px", color: "#f87171", padding: "8px 12px", borderRadius: "8px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                  {createError}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={creating || !newRoomName.trim()}
+                style={{ height: "42px", borderRadius: "11px", border: 0, background: creating ? "rgba(99,102,241,0.4)" : "linear-gradient(135deg, #6366f1, #7c3aed)", color: "white", fontWeight: 700, fontSize: "14px", cursor: creating ? "not-allowed" : "pointer", marginTop: "4px", opacity: !newRoomName.trim() ? 0.5 : 1 }}
+              >
+                {creating ? <Loader2 size={16} style={{ margin: "0 auto", animation: "spin 1s linear infinite" }} /> : t("dash.create")}
               </button>
             </form>
           </div>
