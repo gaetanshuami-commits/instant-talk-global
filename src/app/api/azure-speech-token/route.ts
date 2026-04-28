@@ -1,37 +1,36 @@
+export const runtime = "nodejs"
+
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const speechKey    = process.env.AZURE_SPEECH_KEY
-  const speechRegion = process.env.AZURE_SPEECH_REGION ?? "francecentral"
 
-  if (!speechKey) {
+  const key = process.env.AZURE_SPEECH_KEY
+  const region = process.env.AZURE_SPEECH_REGION
+
+  if (!key || !region) {
+    console.error("Azure env missing")
     return NextResponse.json(
-      { error: "Missing AZURE_SPEECH_KEY" },
+      { error: "Azure Speech env missing" },
       { status: 500 }
     )
   }
 
   try {
+
     const response = await fetch(
-      `https://${speechRegion}.api.cognitive.microsoft.com/sts/v1.0/issueToken`,
+      `https://${region}.api.cognitive.microsoft.com/sts/v1.0/issueToken`,
       {
         method: "POST",
         headers: {
-          "Ocp-Apim-Subscription-Key": speechKey,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Content-Length": "0",
-        },
+          "Ocp-Apim-Subscription-Key": key
+        }
       }
     )
 
     if (!response.ok) {
-      const errorText = await response.text()
-
+      console.error("Azure token fetch failed", response.status)
       return NextResponse.json(
-        {
-          error: "Failed to fetch Azure speech token",
-          details: errorText,
-        },
+        { error: "Azure token fetch failed" },
         { status: 500 }
       )
     }
@@ -40,15 +39,17 @@ export async function GET() {
 
     return NextResponse.json({
       token,
-      region: speechRegion,
+      region
     })
-  } catch (error) {
+
+  } catch (err) {
+
+    console.error("Azure token error:", err)
+
     return NextResponse.json(
-      {
-        error: "Azure speech token request crashed",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Azure token exception" },
       { status: 500 }
     )
   }
+
 }

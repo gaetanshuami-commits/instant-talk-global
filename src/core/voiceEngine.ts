@@ -438,7 +438,7 @@ export async function warmupSDK(): Promise<void> {
     // (neural recognition, much more accurate than WSR). Pre-loading eliminates the
     // cold-start delay when the user first clicks "Traduire".
     if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
-    await ensureToken()
+    if (!process.env.NEXT_PUBLIC_VAPI_KEY) await ensureToken()
   } catch {
     // Non-fatal — retried in startTranslation if needed
   }
@@ -513,6 +513,20 @@ async function startWebSpeechFallback(
   if (!SR) return  // already checked by activateWebSpeechFallback
 
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+  // VAPI FIRST � bypass Azure/WSR for stable PC realtime STT
+  const startedVapi = await startVapiBridge(
+    sourceLang,
+    targets,
+    callbacks,
+    ttsLang,
+    voiceGender,
+    getRemoteCount
+  )
+
+  if (startedVapi) {
+    console.log("[VOICE] VAPI active � Azure/WSR bypassed")
+    return
+  }
   _wsrActive = true
 
   let lastFinalText = ""
@@ -703,6 +717,20 @@ export async function startTranslation(
 
   _ttsGenderGlobal = voiceGender
   const voiceMap = voiceGender === "male" ? TTS_VOICE_MALE : TTS_VOICE_FEMALE
+  // VAPI FIRST � bypass Azure/WSR for stable PC realtime STT
+  const startedVapi = await startVapiBridge(
+    sourceLang,
+    targets,
+    callbacks,
+    ttsLang,
+    voiceGender,
+    getRemoteCount
+  )
+
+  if (startedVapi) {
+    console.log("[VOICE] VAPI active � Azure/WSR bypassed")
+    return
+  }
 
   // ── Primaire : Azure Neural STT (tous navigateurs) ───────────────────────────
   // Reconnaissance neuronale Azure — précision nettement supérieure au WSR natif
@@ -715,7 +743,7 @@ export async function startTranslation(
   try {
     if (!_sdk) _sdk = await import("microsoft-cognitiveservices-speech-sdk")
     sdk = _sdk
-    await ensureToken()
+    if (!process.env.NEXT_PUBLIC_VAPI_KEY) await ensureToken()
     _fallbackMode = false
   } catch {
     // Azure indisponible — basculer sur WSR si disponible (Chrome/Edge)
@@ -1021,3 +1049,46 @@ async function scheduleAudio(audioData: ArrayBuffer): Promise<void> {
   source.start(startAt)
   playbackEndTime = startAt + decoded.duration
 }
+/* ================= LATENCY DEBUG PATCH ================= */
+
+function debugLatency(label: string) {
+  console.log("[VOICE-PIPELINE]", label, Date.now())
+}
+
+/* hook STT partial */
+const _origPartial = callbacks?.onPartial
+callbacks.onPartial = (lang, text) => {
+  debugLatency("STT_PARTIAL")
+  _origPartial?.(lang, text)
+}
+
+/* hook STT final */
+const _origFinal = callbacks?.onFinal
+callbacks.onFinal = (lang, text) => {
+  debugLatency("STT_FINAL")
+  _origFinal?.(lang, text)
+}
+
+/* hook enqueueTTS */
+const _origEnqueue = enqueueTTS
+enqueueTTS = function(text, lang, voiceMap) {
+  debugLatency("TTS_ENQUEUE")
+  return _origEnqueue(text, lang, voiceMap)
+}
+
+/* hook Azure synth */
+const _origAzure = speakWithAzure
+speakWithAzure = async function(text, lang, voice) {
+  debugLatency("AZURE_TTS_START")
+  return _origAzure(text, lang, voice)
+}
+
+/* hook ElevenLabs synth */
+const _origEL = speakWithElevenLabs
+speakWithElevenLabs = async function(text, lang) {
+  debugLatency("ELEVEN_TTS_START")
+  return _origEL(text, lang)
+}
+
+/* ================= END PATCH ================= */
+

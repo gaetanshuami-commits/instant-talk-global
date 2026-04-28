@@ -17,7 +17,13 @@ function ensureExtended(): Promise<void> {
   if (_extLoaded) return Promise.resolve();
   if (_extLoadPromise) return _extLoadPromise;
   _extLoadPromise = import("./translations").then((m) => {
-    Object.assign(_langCache, m.translations as Record<string, unknown>);
+    const ext = m.translations as Record<string, Record<string, unknown>>;
+    for (const [code, data] of Object.entries(ext)) {
+      // Shallow-merge: base-cache keys take priority over extended translations.
+      // This preserves dash.*, guide.* etc. that exist in translations-base.ts
+      // but are absent from the auto-generated translations.ts file.
+      _langCache[code] = { ...(data ?? {}), ...(_langCache[code] ?? {}) };
+    }
     _extLoaded = true;
     // Notify all mounted LanguageProviders so they re-render with correct translations
     _extListeners.forEach((fn) => fn());
@@ -28,7 +34,9 @@ function ensureExtended(): Promise<void> {
 
 const translations = new Proxy({} as Record<LanguageCode, typeof frBase>, {
   get(_, lang: string) {
-    return (_langCache[lang] ?? _langCache.fr) as typeof frBase;
+    // Fallback to English (not French) so non-FR pages stay in a neutral language
+    // while extended translations load asynchronously.
+    return (_langCache[lang] ?? _langCache.en ?? _langCache.fr) as typeof frBase;
   },
   has(_, lang: string) {
     return lang in _langCache || ["es", "de", "it", "pt", "nl", "zh", "ja", "ar", "ko", "hi", "tr", "ru", "pl", "sv", "el", "cs", "ro", "hu", "sw", "th", "vi", "bg", "da", "fi", "sk", "no"].includes(lang);
@@ -111,16 +119,18 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const t = useCallback((path: string): string => {
     const keys = path.split(".");
     let current: unknown = translations[lang];
-    let fallbackFr: unknown = translations.fr;
     let fallbackEn: unknown = translations.en;
+    let fallbackFr: unknown = translations.fr;
 
     for (const key of keys) {
-      current = typeof current === "object" && current !== null ? (current as Record<string, unknown>)[key] : undefined;
-      fallbackFr = typeof fallbackFr === "object" && fallbackFr !== null ? (fallbackFr as Record<string, unknown>)[key] : undefined;
+      current   = typeof current   === "object" && current   !== null ? (current   as Record<string, unknown>)[key] : undefined;
       fallbackEn = typeof fallbackEn === "object" && fallbackEn !== null ? (fallbackEn as Record<string, unknown>)[key] : undefined;
+      fallbackFr = typeof fallbackFr === "object" && fallbackFr !== null ? (fallbackFr as Record<string, unknown>)[key] : undefined;
     }
 
-    return String(current ?? fallbackFr ?? fallbackEn ?? path);
+    // Prefer English over French for missing keys — avoids mixed-language pages
+    // when a new translation key hasn't been added to extended language packs yet.
+    return String(current ?? fallbackEn ?? fallbackFr ?? path);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang, extRev]);  // extRev forces re-evaluation when extended translations arrive
 
